@@ -109,34 +109,6 @@ python scripts/data_summary.py
 python scripts/run_pipeline.py --symbols AAPL GOOGL --days 30
 ```
 
-## Development Timeline
-
-### Weeks 1-2: Foundation (Current)
-- ✅ Project structure and configuration
-- ✅ Data collection pipeline (News + Stock prices)
-- ✅ Database schema and management
-- ✅ Basic logging and error handling
-
-### Weeks 3-4: Sentiment Analysis
-- Implement FinBERT and VADER sentiment analysis
-- Feature engineering from sentiment data
-- Validation against market events
-
-### Weeks 5-6: Temporal Fusion Transformer
-- TFT model implementation
-- Feature engineering for temporal patterns
-- Model training and validation
-
-### Weeks 7-8: Model Refinement
-- Hyperparameter optimization
-- Cross-validation and performance analysis
-- Model interpretability (attention visualization)
-
-### Weeks 9-10: Portfolio Simulation
-- Backtesting framework with transaction costs
-- Risk-adjusted performance metrics
-- Interactive dashboard and documentation
-
 ## Data Sources
 
 - **Stock Prices**: Yahoo Finance (via yfinance)

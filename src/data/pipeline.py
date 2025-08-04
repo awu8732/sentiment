@@ -91,9 +91,6 @@ class DataPipeline:
     def collect_incremental_data(self, symbols: List[str], hours_back: int = 1):
         """Collect only recent data for updates"""
         logger.info(f"Collecting incremental data for last {hours_back} hours")
-        
-        # For incremental updates, we mainly want recent news
-        # Stock data updates less frequently during market hours
         total_articles = 0
         
         for symbol in symbols:
@@ -103,12 +100,22 @@ class DataPipeline:
             for collector in self.news_collectors:
                 if collector.name in ['NewsAPI', 'Reddit']:  # Skip Alpha Vantage for incremental due to rate limits
                     try:
-                        articles = collector.collect_data(symbol, days_back=1)  # Last day
-                        # Filter to last few hours
-                        recent_articles = [
-                            article for article in articles 
-                            if (datetime.now() - article.timestamp).total_seconds() < hours_back * 3600
-                        ]
+                        articles = collector.collect_data(symbol, days_back=max(1, hours_back // 24))
+                        recent_articles = []
+                        for article in articles:
+                            try:
+                                # Handle both offset-aware and offset-naive timestamps
+                                if article.timestamp.tzinfo is not None:
+                                    current_time = datetime.now(article.timestamp.tzinfo)
+                                else:
+                                    current_time = datetime.now()
+                                
+                                if (current_time - article.timestamp).total_seconds() < hours_back * 3600:
+                                    recent_articles.append(article)
+                            except (AttributeError, TypeError) as e:
+                                logger.warning(f"Error processing timestamp for article: {e}")
+                                continue
+                        
                         symbol_articles.extend(recent_articles)
                     except Exception as e:
                         logger.error(f"Error in incremental collection from {collector.name}: {e}")

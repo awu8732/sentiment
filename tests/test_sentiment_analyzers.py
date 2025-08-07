@@ -7,9 +7,7 @@ from unittest.mock import Mock, patch, MagicMock
 import sys
 import os
 
-# Add project root to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-
 from src.sentiment.analyzers import (
     VADERSentimentAnalyzer, FinBERTSentimentAnalyzer, EnsembleSentimentAnalyzer
 )
@@ -381,7 +379,6 @@ class TestSentimentFeatureEngineer:
         )
         
         sentiment = engineer.analyze_article_sentiment(article)
-        
         # Check that all expected keys are present
         expected_keys = ['compound', 'positive', 'negative', 'neutral', 'finbert_compound', 'vader_compound']
         assert all(key in sentiment for key in expected_keys)

@@ -27,6 +27,8 @@ class EnsembleSentimentAnalyzer(BaseSentimentAnalyzer):
         """Analyze text using ensemble of VADER and FinBERT"""
         vader_result = self.vader.analyze_text(text)
         finbert_result = self.finbert.analyze_text(text)
+        #print(*vader_result.items())
+        #print(*finbert_result.items())
         
         # Weighted combination
         compound = (

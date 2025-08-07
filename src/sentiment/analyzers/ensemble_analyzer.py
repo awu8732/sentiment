@@ -62,15 +62,15 @@ class EnsembleSentimentAnalyzer(BaseSentimentAnalyzer):
         """Batch analyze using ensemble"""
         return [self.analyze_text(text) for text in texts]
 
-def get_analyzer(analyzer_type: str = "ensemble") -> BaseSentimentAnalyzer:
-    """Factory function to get sentiment analyzer"""
-    analyzers = {
-        'vader': VADERSentimentAnalyzer,
-        'finbert': FinBERTSentimentAnalyzer,
-        'ensemble': EnsembleSentimentAnalyzer
-    }
-    
-    if analyzer_type.lower() not in analyzers:
-        raise ValueError(f"Unknown analyzer type: {analyzer_type}. Available: {list(analyzers.keys())}")
-    
-    return analyzers[analyzer_type.lower()]()
+    def get_analyzer(analyzer_type: str = "ensemble") -> BaseSentimentAnalyzer:
+        """Factory function to get sentiment analyzer"""
+        analyzers = {
+            'vader': VADERSentimentAnalyzer,
+            'finbert': FinBERTSentimentAnalyzer,
+            'ensemble': EnsembleSentimentAnalyzer
+        }
+        
+        if analyzer_type.lower() not in analyzers:
+            raise ValueError(f"Unknown analyzer type: {analyzer_type}. Available: {list(analyzers.keys())}")
+        
+        return analyzers[analyzer_type.lower()]()

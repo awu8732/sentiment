@@ -24,33 +24,37 @@ class TimeUtils:
         return timestamp.astimezone(TimeUtils.EASTERN)
 
     @staticmethod
+    def is_weekend(timestamp: datetime) -> bool:
+        """Check if the given timestamp falls on a weekend (Saturday or Sunday)"""
+        return TimeUtils.to_eastern(timestamp).weekday() >= 5
+
+    @staticmethod
     def is_market_hours(timestamp: datetime) -> bool:
         """Check if timestamp is during regular U.S. market hours (Mon–Fri, 9:30 AM–4:00 PM ET)"""
-        ts_eastern = TimeUtils.to_eastern(timestamp)
-        if ts_eastern.weekday() >= 5:
+        if TimeUtils.is_weekend(timestamp):
             return False
-        return TimeUtils.MARKET_OPEN <= ts_eastern.time() < TimeUtils.MARKET_CLOSE
+        t = TimeUtils.to_eastern(timestamp).time()
+        return TimeUtils.MARKET_OPEN <= t < TimeUtils.MARKET_CLOSE
 
     @staticmethod
     def is_after_hours(timestamp: datetime) -> bool:
-        """Check if timestamp is after regular market hours (including pre-market)"""
-        ts_eastern = TimeUtils.to_eastern(timestamp)
-        if ts_eastern.weekday() >= 5:
+        """Check if timestamp is after market close or before market open on a weekday"""
+        if TimeUtils.is_weekend(timestamp):
             return True
-        t = ts_eastern.time()
+        t = TimeUtils.to_eastern(timestamp).time()
         return t < TimeUtils.MARKET_OPEN or t >= TimeUtils.MARKET_CLOSE
 
     @staticmethod
     def get_trading_day_type(timestamp: datetime) -> Literal['weekend', 'pre_market', 'market_hours', 'after_hours']:
         """Categorize timestamp as one of: weekend, pre_market, market_hours, after_hours"""
-        ts_eastern = TimeUtils.to_eastern(timestamp)
-        t = ts_eastern.time()
-
-        if ts_eastern.weekday() >= 5:
+        if TimeUtils.is_weekend(timestamp):
             return 'weekend'
-        elif t < TimeUtils.MARKET_OPEN:
+        
+        t = TimeUtils.to_eastern(timestamp).time()
+        if t < TimeUtils.MARKET_OPEN:
             return 'pre_market'
-        elif TimeUtils.MARKET_OPEN <= t < TimeUtils.MARKET_CLOSE:
+        elif t < TimeUtils.MARKET_CLOSE:
             return 'market_hours'
         else:
             return 'after_hours'
+

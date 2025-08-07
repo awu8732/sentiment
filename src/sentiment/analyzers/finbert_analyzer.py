@@ -22,7 +22,7 @@ class FinBERTSentimentAnalyzer(BaseSentimentAnalyzer):
             from transformers import AutoTokenizer, AutoModelForSequenceClassification
             import torch
 
-            model_name = "ProsusuAI/finbert"
+            model_name = "yiyanghkust/finbert-tone"
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             self.tokenizer = AutoTokenizer.from_pretrained(model_name)
             self.model = AutoModelForSequenceClassification.from_pretrained(model_name)

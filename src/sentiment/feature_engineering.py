@@ -43,11 +43,11 @@ class SentimentFeatureEngineer:
     def analyze_article_sentiment(self, article: NewsArticle) -> Dict[str, float]:
         """Analyze sentiment of a single article using multiple methods"""
         text = f"{article.title} {article.description}".strip()
-        return self.sentiment_analyzer.analyze(text)
+        return self.sentiment_analyzer.analyze_text(text)
 
     def create_time_based_features(self, articles_df: pd.DataFrame, 
                                  symbol: str, 
-                                 time_windows: List[str] = ['1H', '4H', '1D']) -> pd.DataFrame:
+                                 time_windows: List[str] = ['1h', '4h', '1h']) -> pd.DataFrame:
         """Create time-based features with differing aggregation windows"""
         if articles_df.empty:
             return pd.DataFrame()
@@ -58,9 +58,9 @@ class SentimentFeatureEngineer:
         articles_df = articles_df.sort_values('timestamp')
 
         # Create a complete time range (rounded to the nearest hour)
-        start_time = articles_df['timestamp'].min().floor('H')
-        end_time = articles_df['timestamp'].max().ceil('H')
-        time_range = pd.date_range(start=start_time, end=end_time, freq='H')
+        start_time = articles_df['timestamp'].min().floor('h')
+        end_time = articles_df['timestamp'].max().ceil('h')
+        time_range = pd.date_range(start=start_time, end=end_time, freq='h')
 
         features_list = []
         for timestamp in time_range:
@@ -104,13 +104,13 @@ class SentimentFeatureEngineer:
 
         # Create hourly features
         hourly_features = []
-        start_time = sentiment_df['timestamp'].min().floor('H')
-        end_time = sentiment_df['timestamp'].max().ceil('H')
-        time_range = pd.date_range(start=start_time, end=end_time, freq='H')
+        start_time = sentiment_df['timestamp'].min().floor('h')
+        end_time = sentiment_df['timestamp'].max().ceil('h')
+        time_range = pd.date_range(start=start_time, end=end_time, freq='h')
 
         for timestamp in time_range:
             # Get articles in the last 24 hours
-            window_start = timestamp - pd.Timedelta('24H')
+            window_start = timestamp - pd.Timedelta('24h')
             window_data = sentiment_df[(sentiment_df['timestamp'] >= window_start) & (sentiment_df['timestamp'] < timestamp)]
 
             if len(window_data) == 0:
@@ -143,12 +143,12 @@ class SentimentFeatureEngineer:
         ].copy()
             
         features_list = []
-        start_time = target_articles['timestamp'].min().floor('H')
-        end_time = target_articles['timestamp'].max().ceil('H')
-        time_range = pd.date_range(start=start_time, end=end_time, freq='H')
+        start_time = target_articles['timestamp'].min().floor('h')
+        end_time = target_articles['timestamp'].max().ceil('h')
+        time_range = pd.date_range(start=start_time, end=end_time, freq='h')
 
         for timestamp in time_range:
-            window_start = timestamp - pd.Timedelta('24H')
+            window_start = timestamp - pd.Timedelta('24h')
 
             # Target symbol & sector sentiment
             target_window = target_articles[
@@ -263,7 +263,7 @@ class SentimentFeatureEngineer:
             'timestamp': timestamp,
             'symbol': target_symbol,
             'sector_sentiment_mean': np.mean(sector_sentiments) if sector_sentiments else 0.0,
-            'sentiment_sector_correlation': self.cross_symbol_utils.calculate_sector_correlation(
+            'sentiment_sector_correlation': self.cross_symbol_utils.calculate_sentiment_correlation(
                 target_sentiments, sector_sentiments
             ),
             'relative_sentiment_strength': self.cross_symbol_utils.calculate_relative_sentiment(

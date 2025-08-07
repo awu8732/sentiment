@@ -1,2 +1,4 @@
 from base_sentiment_analyzer import BaseSentimentAnalyzer
 from vader_analyzer import VADERAnalyzer
+from finbert_analyzer import FinBERTAnalyzer
+from ensemble_analyzer import EnsembleSentimentAnalyzer

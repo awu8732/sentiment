@@ -1,12 +1,12 @@
 from typing import List, Dict
 import logging
 import warnings
-from sentiment.analyzers.base_sentiment_analyzer import BaseSentimentAnalyzer
+from .base_sentiment_analyzer import BaseSentimentAnalyzer
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 logger = logging.getLogger(__name__)
 
-class FinBERTAnalyzer(BaseSentimentAnalyzer):
+class FinBERTSentimentAnalyzer(BaseSentimentAnalyzer):
     """FinBERT Sentiment Analysis: Transformer-based architecture for financial text"""
     
     def __init__(self):

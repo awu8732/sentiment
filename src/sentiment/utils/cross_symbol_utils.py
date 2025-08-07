@@ -1,7 +1,7 @@
 import numpy as np
 from typing import List
 import logging
-from statistical_utils import StatisticalUtils
+from .statistical_utils import StatisticalUtils
 
 logger = logging.getLogger(__name__)
 

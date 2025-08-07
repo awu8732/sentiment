@@ -5,7 +5,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-class Newsutils:
+class NewsUtils:
     """Utility functions for analyzing news article data"""
 
     @staticmethod

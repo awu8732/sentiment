@@ -4,8 +4,10 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Tuple
 import logging
 from collections import defaultdict
-from textblob import TextBlob
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+
+from .analyzers import EnsembleSentimentAnalyzer
+from .utils import StatisticalUtils, TimeUtils, SentimentUtils, NewsUtils, CrossSymbolUtils
 
 from ..data.models import NewsArticle, SentimentFeatures
 
@@ -18,8 +20,12 @@ class SentimentFeatureEngineer:
 
     def __init__(self, use_finbert: bool = False):
         self.use_finbert = use_finbert
-        self.vader_analyzer = SentimentIntensityAnalyzer()
-        self.finbert_model = None
+        self.sentiment_analyzer = EnsembleSentimentAnalyzer(use_finbert)
+        self.stats_utils = StatisticalUtils()
+        self.time_utils = TimeUtils()
+        self.sentiment_utils = SentimentUtils()
+        self.news_utils = NewsUtils()
+        self.cross_symbol_utils = CrossSymbolUtils()
 
         if use_finbert:
             try:
@@ -28,7 +34,7 @@ class SentimentFeatureEngineer:
                 self.finbert_model = AutoModelForSequenceClassification.from_pretrained("ProsusAI/finbert")
                 logger.info("FinBERT model loaded successfully.")
             except ImportError:
-                logger.error("Transformers library is not installed. Falling back to VADER and TextBlob")
+                logger.error("Transformers library is not installed. Falling back to VADER")
                 self.use_finbert = False
             except Exception as e:
                 logger.error(f"Error loading FinBERT model: {e}")
@@ -37,44 +43,7 @@ class SentimentFeatureEngineer:
     def analyze_article_sentiment(self, article: NewsArticle) -> Dict[str, float]:
         """Analyze sentiment of a single article using multiple methods"""
         text = f"{article.title} {article.description}".strip()
-        if not text:
-            return {'compound': 0.0, 'textblob': 0.0, 'finbert': 0.0}
-        
-        sentiment_scores = {}
-
-        # VADER sentiment (specialized in social media & informal text)
-        vader_scores = self.vader_analyzer.polarity_scores(text)
-        sentiment_scores['compound'] = vader_scores['compound']
-        sentiment_scores['positive'] = vader_scores['pos']
-        sentiment_scores['negative'] = vader_scores['neg']
-        sentiment_scores['neutral'] = vader_scores['neu']
-
-        # Textblob sentiment (general-purpose)
-        try: 
-            blob = TextBlob(text)
-            sentiment_scores['textblob'] = blob.sentiment.polarity
-            sentiment_scores['subjectivity'] = blob.sentiment.subjectivity
-        except:
-            sentiment_scores['textblob'] = 0.0
-            sentiment_scores['subjectivity'] = 0.0
-
-        # FinBERT sentiment ( practiced for financial text)
-        if self.use_finbert and self.finbert_model:
-            try:
-                inputs = self.finbert_tokenizer(text, return_tensors="pt", truncation=True, padding=True, max_length=512)
-                outputs = self.finbert_model(**inputs)
-                predictions = outputs.logits.softmax(dim=1)
-
-                # FinBERT outputs: positive, neutraul, negative
-                finbert_score = predictions[0][2].item() - predictions[0][0].item()  # positive - negative
-                sentiment_scores['finbert'] = finbert_score
-            
-            except:
-                sentiment_scores['finbert'] = 0.0
-        else:
-            sentiment_scores['finbert'] = 0.0
-
-        return sentiment_scores
+        return self.sentiment_analyzer.analyze(text)
 
     def create_time_based_features(self, articles_df: pd.DataFrame, 
                                  symbol: str, 
@@ -86,6 +55,7 @@ class SentimentFeatureEngineer:
         # Ensure timestamp is datetime format
         articles_df['timestamp'] = pd.to_datetime(articles_df['timestamp'], errors='coerce')
         articles_df = articles_df.dropna(subset=['timestamp'])
+        articles_df = articles_df.sort_values('timestamp')
 
         # Create a complete time range (rounded to the nearest hour)
         start_time = articles_df['timestamp'].min().floor('H')
@@ -106,40 +76,12 @@ class SentimentFeatureEngineer:
 
                 if len(window_articles) == 0:
                     # No articles in this window, set default values
-                    feature_row.update({
-                        f'sentiment_mean_{window}': 0.0,
-                        f'sentiment_std_{window}': 0.0,
-                        f'sentiment_skew_{window}': 0.0,
-                        f'news_volume_{window}': 0,
-                        f'source_diversity_{window}': 0.0,
-                        f'sentiment_momentum_{window}': 0.0
-                    })
+                    feature_row.update(self._create_empty_window_features(window))
                     continue
 
                 # Calculate sentiment for articles in window
-                sentiments = []
-                for _, article in window_articles.iterrows():
-                    article_obj = NewsArticle(
-                        timestamp=article['timestamp'],
-                        title=article.get('title', ''),
-                        description=article.get('description', ''),
-                        source=article.get('source', ''),
-                        url=article.get('url', ''),
-                        symbol=symbol
-                    )
-
-                    sentiment = self.analyze_article_sentiment(article_obj)
-                    sentiments.append(sentiment['compound'])
-
-                sentiments = np.array(sentiments)
-                feature_row.update({
-                    f'sentiment_mean_{window}': np.mean(sentiments),
-                    f'sentiment_std_{window}': np.std(sentiments) if len(sentiments) > 1 else 0.0,
-                    f'sentiment_skew_{window}': self._safe_skew(sentiments),
-                    f'news_volume_{window}': len(window_articles),
-                    f'source_diversity_{window}': self._calculate_source_diversity(window_articles),
-                    f'sentiment_momentum_{window}': self._calculate_sentiment_momentum(window_articles, sentiments)
-                })
+                sentiments = self._get_sentiment_scores(window_articles, symbol)
+                feature_row.update(self._calculate_window_features(window_articles, sentiments, window))
 
             features_list.append(feature_row)
         return pd.DataFrame(features_list)
@@ -157,24 +99,7 @@ class SentimentFeatureEngineer:
         articles_df['timestamp'] = pd.to_datetime(articles_df['timestamp'], errors='coerce')
         articles_df = articles_df.sort_values(by='timestamp').dropna(subset=['timestamp'])
 
-        # Analyze all articles first
-        sentiment_data = []
-        for __, article in articles_df.iterrows():
-            article_obj = NewsArticle(
-                timestamp=article['timestamp'],
-                title=article.get('title', ''),
-                description=article.get('description', ''),
-                source=article.get('source', ''),
-                url=article.get('url', ''),
-                symbol=symbol
-            )
-            sentiment = self.analyze_article_sentiment(article_obj)
-            sentiment_data.append({
-                'timestamp': article['timestamp'],
-                'sentiment': article.get('compound', ''),
-                'source': article.get('source', ''),
-                'is_market_hours': self._is_market_hours(article['timestamp'])
-            })
+        sentiment_data = self._prepare_sentiment_data(articles_df, symbol)
         sentiment_df = pd.DataFrame(sentiment_data)
 
         # Create hourly features
@@ -191,11 +116,7 @@ class SentimentFeatureEngineer:
             if len(window_data) == 0:
                 continue
 
-            features = {
-                'timestamp': timestamp,
-                'symbol': symbol
-                #MORE LATER: Add more features here
-            }
+            features = self._calculate_advanced_features(timestamp, symbol, window_data)
             hourly_features.append(features)
 
         return pd.DataFrame(hourly_features)
@@ -242,41 +163,118 @@ class SentimentFeatureEngineer:
             if len(target_window) == 0 or len(sector_window) == 0:
                 continue
 
-            target_sentiments = [
-                self.analyze_article_sentiment(
-                    NewsArticle(
-                        timestamp=row['timestamp'],
-                        title=row.get('title', ''),
-                        description=row.get('description', ''),
-                        source=row.get('source', ''),
-                        url=row.get('url', ''),
-                        symbol=target_symbol
-                    )
-                )['compound'] for _, row in target_window.iterrows()
-            ]
-            sector_sentiments = []
-            if len(sector_window) > 0:
-                for _, row in sector_window.iterrows():
-                    sentiment = self.analyze_article_sentiment(
-                        NewsArticle(
-                            timestamp=row['timestamp'],
-                            title=row.get('title', ''),
-                            description=row.get('description', ''),
-                            source=row.get('source', ''),
-                            url=row.get('url', ''),
-                            symbol=row['symbol']
-                        )
-                    )['compound']
-                    sector_sentiments.append(sentiment)
-
-            features = {
-                'timestamp': timestamp,
-                'symbol': target_symbol
-
-                # MORE LATER: Add more features here
-            }
+            target_sentiments = self._get_sentiment_scores(target_window, target_symbol)
+            sector_sentiments = self._get_sentiment_scores(sector_window, None) if len(sector_window) > 0 else []
+            features = self._calculate_cross_symbol_features(
+                timestamp, target_symbol, target_sentiments, sector_sentiments, len(sector_window)
+            )
             features_list.append(features)
             
         return pd.DataFrame(features_list)
+    
+    # Private helper methods that use the utility classes
+    def _create_empty_window_features(self, window: str) -> Dict[str, float]:
+        """Create empty features for window with no articles"""
+        return {
+            f'sentiment_mean_{window}': 0.0,
+            f'sentiment_std_{window}': 0.0,
+            f'sentiment_skew_{window}': 0.0,
+            f'news_volume_{window}': 0,
+            f'source_diversity_{window}': 0.0,
+            f'sentiment_momentum_{window}': 0.0
+        }
+    
+    def _get_sentiment_scores(self, articles_df: pd.DataFrame, symbol: Optional[str]) -> List[float]:
+        """Extract sentiment scores from articles"""
+        sentiments = []
+        for _, article in articles_df.iterrows():
+            article_obj = NewsArticle(
+                timestamp=article['timestamp'],
+                title=article.get('title', ''),
+                description=article.get('description', ''),
+                source=article.get('source', ''),
+                url=article.get('url', ''),
+                symbol=symbol or article.get('symbol', '')
+            )
+            sentiment = self.analyze_article_sentiment(article_obj)
+            sentiments.append(sentiment['compound'])
+        return sentiments
+    
+    def _calculate_window_features(self, window_articles: pd.DataFrame, 
+                                 sentiments: List[float], window: str) -> Dict[str, float]:
+        """Calculate features for a time window using utility classes"""
+        sentiments_array = np.array(sentiments)
+        
+        return {
+            f'sentiment_mean_{window}': np.mean(sentiments_array),
+            f'sentiment_std_{window}': self.stats_utils.safe_std(sentiments_array),
+            f'sentiment_skew_{window}': self.stats_utils.safe_skew(sentiments_array),
+            f'news_volume_{window}': len(window_articles),
+            f'source_diversity_{window}': self.news_utils.calculate_source_diversity(window_articles),
+            f'sentiment_momentum_{window}': self.sentiment_utils.calculate_sentiment_momentum(sentiments_array)
+        }
+    
+    
+    def _prepare_sentiment_data(self, articles_df: pd.DataFrame, symbol: str) -> List[Dict]:
+        """Prepare sentiment data for advanced features"""
+        sentiment_data = []
+        for _, article in articles_df.iterrows():
+            article_obj = NewsArticle(
+                timestamp=article['timestamp'],
+                title=article.get('title', ''),
+                description=article.get('description', ''),
+                source=article.get('source', ''),
+                url=article.get('url', ''),
+                symbol=symbol
+            )
+            sentiment = self.analyze_article_sentiment(article_obj)
+            sentiment_data.append({
+                'timestamp': article['timestamp'],
+                'sentiment': sentiment['compound'],
+                'source': article.get('source', ''),
+                'is_market_hours': self.time_utils.is_market_hours(article['timestamp'])
+            })
+        return sentiment_data
+    
+    def _calculate_advanced_features(self, timestamp: datetime, symbol: str, 
+                                   window_data: pd.DataFrame) -> Dict:
+        """Calculate advanced features using utility classes"""
+        market_hours_data = window_data[window_data['is_market_hours'] == True]
+        after_hours_data = window_data[window_data['is_market_hours'] == False]
+        
+        return {
+            'timestamp': timestamp,
+            'symbol': symbol,
+            'sentiment_regime': self.sentiment_utils.detect_sentiment_regime(window_data['sentiment']),
+            'market_hours_sentiment': market_hours_data['sentiment'].mean() if len(market_hours_data) > 0 else 0.0,
+            'after_hours_sentiment': after_hours_data['sentiment'].mean() if len(after_hours_data) > 0 else 0.0,
+            'sentiment_volatility': self.stats_utils.safe_std(window_data['sentiment'].values),
+            'news_flow_intensity': self.news_utils.calculate_news_flow_intensity(window_data),
+            'source_credibility_score': self.news_utils.calculate_source_credibility(window_data),
+            'sentiment_persistence': self.sentiment_utils.calculate_sentiment_persistence(window_data['sentiment']),
+            'extreme_sentiment_ratio': self.sentiment_utils.calculate_extreme_sentiment_ratio(window_data['sentiment'])
+        }
+    
+    def _calculate_cross_symbol_features(self, timestamp: datetime, target_symbol: str,
+                                       target_sentiments: List[float], sector_sentiments: List[float],
+                                       sector_news_volume: int) -> Dict:
+        """Calculate cross-symbol features using utility classes"""
+        return {
+            'timestamp': timestamp,
+            'symbol': target_symbol,
+            'sector_sentiment_mean': np.mean(sector_sentiments) if sector_sentiments else 0.0,
+            'sentiment_sector_correlation': self.cross_symbol_utils.calculate_sector_correlation(
+                target_sentiments, sector_sentiments
+            ),
+            'relative_sentiment_strength': self.cross_symbol_utils.calculate_relative_sentiment(
+                target_sentiments, sector_sentiments
+            ),
+            'sector_news_volume': sector_news_volume,
+            'sentiment_divergence': self.cross_symbol_utils.calculate_sentiment_divergence(
+                target_sentiments, sector_sentiments
+            )
+        }
+    
+
 
 

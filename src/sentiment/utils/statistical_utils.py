@@ -7,7 +7,7 @@ from scipy.stats import skew as scipy_skew
 
 logger = logging.getLogger(__name__)
 
-class StatisticsUtils:
+class StatisticalUtils:
     """Utility class for statistical calculation"""
 
     @staticmethod

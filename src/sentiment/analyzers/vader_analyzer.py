@@ -1,12 +1,12 @@
 from typing import List, Dict, Any
 import logging
 import warnings
-from sentiment.analyzers.base_sentiment_analyzer import BaseSentimentAnalyzer
+from .base_sentiment_analyzer import BaseSentimentAnalyzer
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 logger = logging.getLogger(__name__)
 
-class VADERAnalyzer(BaseSentimentAnalyzer):
+class VADERSentimentAnalyzer(BaseSentimentAnalyzer):
     """VADER Sentiment Analysis: Rule + social media-based"""
     
     def __init__(self):

@@ -1,7 +1,9 @@
 from typing import List, Dict
 import logging
 import warnings
-from sentiment.analyzers import BaseSentimentAnalyzer, VADERAnalyzer, FinBERTAnalyzer
+from .base_sentiment_analyzer import BaseSentimentAnalyzer
+from .vader_analyzer import VADERSentimentAnalyzer
+from .finbert_analyzer import FinBERTSentimentAnalyzer
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 logger = logging.getLogger(__name__)
@@ -14,8 +16,8 @@ class EnsembleSentimentAnalyzer(BaseSentimentAnalyzer):
         self.vader_weight = vader_weight
         self.finbert_weight = finbert_weight
         
-        self.vader = VADERAnalyzer()
-        self.finbert = FinBERTAnalyzer()
+        self.vader = VADERSentimentAnalyzer()
+        self.finbert = FinBERTSentimentAnalyzer()
         self.is_initialized = self.vader.is_initialized or self.finbert.is_initialized
         
         if self.is_initialized:
@@ -63,8 +65,8 @@ class EnsembleSentimentAnalyzer(BaseSentimentAnalyzer):
 def get_analyzer(analyzer_type: str = "ensemble") -> BaseSentimentAnalyzer:
     """Factory function to get sentiment analyzer"""
     analyzers = {
-        'vader': VADERAnalyzer,
-        'finbert': FinBERTAnalyzer,
+        'vader': VADERSentimentAnalyzer,
+        'finbert': FinBERTSentimentAnalyzer,
         'ensemble': EnsembleSentimentAnalyzer
     }
     

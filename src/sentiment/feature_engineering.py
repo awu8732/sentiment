@@ -18,27 +18,13 @@ class SentimentFeatureEngineer:
     Creates features that capture sentiment patterns, momentum, and market dynamics.
     """
 
-    def __init__(self, use_finbert: bool = False):
-        self.use_finbert = use_finbert
-        self.sentiment_analyzer = EnsembleSentimentAnalyzer(use_finbert)
+    def __init__(self):
+        self.sentiment_analyzer = EnsembleSentimentAnalyzer()
         self.stats_utils = StatisticalUtils()
         self.time_utils = TimeUtils()
         self.sentiment_utils = SentimentUtils()
         self.news_utils = NewsUtils()
         self.cross_symbol_utils = CrossSymbolUtils()
-
-        if use_finbert:
-            try:
-                from transformers import AutoTokenizer, AutoModelForSequenceClassification
-                self.finbert_tokenizer = AutoTokenizer.from_pretrained("ProsusAI/finbert")
-                self.finbert_model = AutoModelForSequenceClassification.from_pretrained("ProsusAI/finbert")
-                logger.info("FinBERT model loaded successfully.")
-            except ImportError:
-                logger.error("Transformers library is not installed. Falling back to VADER")
-                self.use_finbert = False
-            except Exception as e:
-                logger.error(f"Error loading FinBERT model: {e}")
-                self.use_finbert = False
         
     def analyze_article_sentiment(self, article: NewsArticle) -> Dict[str, float]:
         """Analyze sentiment of a single article using multiple methods"""

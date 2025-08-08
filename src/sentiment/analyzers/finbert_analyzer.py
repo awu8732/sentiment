@@ -36,7 +36,7 @@ class FinBERTSentimentAnalyzer(BaseSentimentAnalyzer):
                 model=model, 
                 tokenizer=tokenizer, 
                 device=device,
-                return_all_scores=True  # Get probabilities for all classes
+                top_k=None
             )
             self.is_initialized = True
             logger.info(f"FinBERT analyzer initialized using '{model_name}' on {'cuda' if device == 0 else 'cpu'}")

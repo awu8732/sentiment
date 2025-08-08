@@ -1,4 +1,5 @@
 from typing import List, Dict
+import math
 import logging
 import warnings
 from .base_sentiment_analyzer import BaseSentimentAnalyzer
@@ -10,25 +11,36 @@ logger = logging.getLogger(__name__)
 
 class EnsembleSentimentAnalyzer(BaseSentimentAnalyzer):
     """Ensemble analyzer combining VADER and FinBERT"""
-    
-    def __init__(self, vader_weight: float = 0.3, finbert_weight: float = 0.7):
+    DEFAULT_VADER_WEIGHT = 0.3
+    DEFAULT_FINBERT_WEIGHT = 0.7
+
+    def __init__(self, vader_weight: float = DEFAULT_VADER_WEIGHT, finbert_weight: float = DEFAULT_FINBERT_WEIGHT):
         super().__init__("Ensemble")
+
+        if not math.isclose(vader_weight + finbert_weight, 1.0, rel_tol=1e-5):
+            logger.warning(
+                f"Model weights do not sum to 1 (VADER: {vader_weight}, FinBERT: {finbert_weight}). "
+                f"Falling back to default weights: VADER = {self.DEFAULT_VADER_WEIGHT}, FinBERT = {self.DEFAULT_FINBERT_WEIGHT}"
+            )
+            vader_weight = self.DEFAULT_VADER_WEIGHT
+            finbert_weight = self.DEFAULT_FINBERT_WEIGHT
+
         self.vader_weight = vader_weight
         self.finbert_weight = finbert_weight
-        
+
         self.vader = VADERSentimentAnalyzer()
         self.finbert = FinBERTSentimentAnalyzer()
         self.is_initialized = self.vader.is_initialized or self.finbert.is_initialized
-        
+
         if self.is_initialized:
-            logger.info(f"Ensemble analyzer initialized (VADER: {vader_weight}, FinBERT: {finbert_weight})")
+            logger.info(f"Ensemble analyzer initialized (VADER: {self.vader_weight}, FinBERT: {self.finbert_weight})")
     
     def analyze_text(self, text: str) -> Dict[str, float]:
         """Analyze text using ensemble of VADER and FinBERT"""
         vader_result = self.vader.analyze_text(text)
         finbert_result = self.finbert.analyze_text(text)
-        #print(*vader_result.items())
-        #print(*finbert_result.items())
+        print("VADER:", ", ".join(f"{k}: {round(v,4)}" for k, v in vader_result.items()))
+        print("FinBERT:", ", ".join(f"{k}: {round(v,4)}" for k, v in finbert_result.items()))
         
         # Weighted combination
         compound = (

@@ -9,43 +9,49 @@ logger = logging.getLogger(__name__)
 class FinBERTSentimentAnalyzer(BaseSentimentAnalyzer):
     """FinBERT Sentiment Analysis: Transformer-based architecture for financial text"""
     
-    def __init__(self):
+    def __init__(self, model_name: str = "ProsusAI/finbert"):
         super().__init__("FinBERT")
         self.nlp_pipeline = None
         self.is_initialized = False
-        self._initialize()
+        self.model_name = model_name
+        self._initialize(self.model_name)
 
-    def _initialize(self):
-        try:
-            from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline
-            import torch
+    def _initialize(self, model_name: str):
+        from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline
+        import torch
 
-            model_name = "ProsusAI/finbert"
-            model = AutoModelForSequenceClassification.from_pretrained(model_name)
-            tokenizer = AutoTokenizer.from_pretrained(model_name)
-
-            # Check for CUDA
-            if torch.cuda.is_available():
-                device = 0
+        def load_model(name):
+            model = AutoModelForSequenceClassification.from_pretrained(name)
+            tokenizer = AutoTokenizer.from_pretrained(name)
+            device = 0 if torch.cuda.is_available() else -1
+            if device == 0:
                 model = model.cuda()
-            else:
-                device = -1
-
-            self.nlp_pipeline = pipeline(
-                "text-classification", 
-                model=model, 
-                tokenizer=tokenizer, 
+            return pipeline(
+                "text-classification",
+                model=model,
+                tokenizer=tokenizer,
                 device=device,
                 top_k=None
-            )
+            ), device
+
+        try:
+            self.nlp_pipeline, device = load_model(model_name)
             self.is_initialized = True
             logger.info(f"FinBERT analyzer initialized using '{model_name}' on {'cuda' if device == 0 else 'cpu'}")
-        except ImportError:
-            logger.error("transformers or torch not installed. Try running: pip install transformers torch")
-            self.is_initialized = False
         except Exception as e:
-            logger.error(f"Error initializing FinBERT: {e}")
-            self.is_initialized = False
+            if model_name != "ProsusAI/finbert":
+                logger.warning(f"Model '{model_name}' failed to initialize ({e}). Falling back to 'ProsusAI/finbert'.")
+                try:
+                    self.nlp_pipeline, device = load_model("ProsusAI/finbert")
+                    self.model_name = "ProsusAI/finbert"
+                    self.is_initialized = True
+                    logger.info(f"Fallback FinBERT initialized using 'ProsusAI/finbert' on {'cuda' if device == 0 else 'cpu'}")
+                except Exception as e2:
+                    logger.error(f"Fallback to ProsusAI/finbert also failed: {e2}")
+                    self.is_initialized = False
+            else:
+                logger.error(f"Error initializing FinBERT with '{model_name}': {e}")
+                self.is_initialized = False
 
     def analyze_text(self, text: str) -> Dict[str, float]:
         if not self.is_initialized or not isinstance(text, str) or not text.strip():

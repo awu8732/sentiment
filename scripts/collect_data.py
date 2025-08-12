@@ -7,6 +7,7 @@ Usage: python scripts/collect_data.py --symbols AAPL GOOGL --days 30
 import sys
 import os
 import argparse
+import pandas as pd
 from datetime import datetime
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -60,9 +61,29 @@ def main():
         print(f"Active collectors: {status['active_collectors']}")
         
         print("\nData summary:")
-        news_df = status['data_summary']['news_summary'][['symbol', 'article_count']].head(10)
-        stock_df = status['data_summary']['stock_summary'][['symbol', 'price_points']].head(10)
-        merged_summary = news_df.merge(stock_df, on='symbol', how='left')
+        news_df = status['data_summary']['news_summary'][['symbol', 'article_count']]
+        stock_df = status['data_summary']['stock_summary'][['symbol', 'price_points']]
+        
+        # Sanity check for symbol alignment, null points, and duplicates
+        news_symbols = set(news_df['symbol'])
+        stock_symbols = set(stock_df['symbol'])
+        intersection = news_symbols & stock_symbols
+        if len(intersection) < len(news_symbols):
+            missing = news_symbols - stock_symbols
+            logger.warning(
+                f"{len(missing)} symbol(s) in news_summary are missing from stock_summary: {sorted(missing)}"
+            )
+        null_price_points = stock_df['price_points'].isna().sum()
+        if null_price_points > 0:
+            logger.warning(f"stock_summary has {null_price_points} rows with missing price_points.")
+
+        if news_df['symbol'].duplicated().any():
+            logger.warning(f"news_summary has duplicate symbols: {news_df[news_df['symbol'].duplicated()]['symbol'].tolist()}")
+        if stock_df['symbol'].duplicated().any():
+            logger.warning(f"stock_summary has duplicate symbols: {stock_df[stock_df['symbol'].duplicated()]['symbol'].tolist()}")
+
+        # Merge after checks
+        merged_summary = news_df.merge(stock_df, on='symbol', how='left').head(10)
         print(merged_summary)
         
     except Exception as e:

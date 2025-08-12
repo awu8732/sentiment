@@ -4,7 +4,7 @@ from typing import Dict, List
 STOCK_SYMBOLS = {
     'technology': [
         'AAPL', 'GOOGL', 'MSFT', 'AMZN', 'TSLA', 'NVDA', 'META', 'NFLX', 
-        'AMD', 'INTC', 'ORCL', 'CRM', 'ADBE', 'PYPL', 'ZOOM'
+        'AMD', 'INTC', 'ORCL', 'CRM', 'ADBE', 'PYPL'
     ],
     'finance': [
         'JPM', 'BAC', 'WFC', 'GS', 'MS', 'C', 'V', 'MA', 'AXP'

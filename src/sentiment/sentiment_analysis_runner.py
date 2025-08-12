@@ -2,13 +2,13 @@ import sys
 import os
 import pandas as pd
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import List, Optional, Dict
 import logging
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from config.config import Config
 from src.data.database import DatabaseManager
-from src.data.models import NewsArticle
+from src.data.models import NewsArticle, SentimentFeatures
 from src.sentiment.feature_engineering import SentimentFeatureEngineer
 from src.sentiment.analyzers import EnsembleSentimentAnalyzer
 
@@ -26,14 +26,45 @@ class SentimentAnalysisRunner:
         if not self.sentiment_analyzer.is_initialized:
             self.logger.error("Sentiment analyzer failed to initialize")
             raise RuntimeError("Cannot proceed without sentiment analyzer")
-    
+        
     def analyze_articles(self, 
-                        symbols: Optional[List[str]] = None,
-                        article_ids: Optional[List[int]] = None,
-                        since_date: Optional[datetime] = None,
-                        batch_size: int = 100,
-                        force_reanalyze: bool = False) -> dict:
-        """Analyze sentiment for articles matching the criteria"""
+                         symbols: Optional[List[str]]= None,
+                         article_ids: Optional[List[int]] = None,
+                         since_date:  Optional[datetime] = None,
+                         batch_size: int = 100,
+                         force_reanalyze: bool = False,
+                         create_features: bool = True) -> Dict:
+        """Analyze sentiment for articles matching passed criteria and optionally create features"""
+        # STEP 1: Analyze individual articles
+        analysis_results = self._analyze_individual_articles(
+            symbols, article_ids, since_date, batch_size, force_reanalyze
+        )
+
+        if analysis_results['articles_updated'] == 0:
+            return analysis_results
+        
+        # STEP 2: Create and popualte sentiment features if requested
+        if create_features:
+            self.logger.info("Creating sentiment features... ")
+            features_results = self._create_sentiment_features(
+                analysis_results['symbols_processed'],
+                since_date
+            )
+            analysis_results['features_created'] = features_results['features_created']
+            analysis_results['features_updated'] = features_results['features_updated']
+        else:
+            analysis_results['features_created'] = 0
+            analysis_results['features_updated'] = 0
+
+        return analysis_results
+    
+    def _analyze_individual_articles(self,
+                                   symbols: Optional[List[str]] = None,
+                                   article_ids: Optional[List[int]] = None,
+                                   since_date: Optional[datetime] = None,
+                                   batch_size: int = 100,
+                                   force_reanalyze: bool = False) -> dict:
+        """Analyze sentiment for individual articles"""
         # Build query conditions
         conditions = []
         params = []
@@ -100,14 +131,86 @@ class SentimentAnalysisRunner:
         
         processing_time = (datetime.now() - start_time).total_seconds()
         
-        results = {
+        return {
             'articles_processed': len(articles_df),
             'articles_updated': updated_count,
             'symbols_processed': list(processed_symbols),
             'processing_time': processing_time
         }
-        self.logger.info(f"Sentiment analysis completed: {results}")
-        return results
+    
+    def _create_sentiment_features(self, symbols: List[str], since_date: Optional[datetime] = None) -> Dict[str, int]:
+        """Create sentiment features for the analyzed symbols"""
+        if not symbols:
+            return {'features_created': 0, 'features_updated': 0}
+        
+        features_created = 0
+        features_updated = 0
+        # Default lookback fro feature creation
+        lookback_date = since_date or (datetime.now() - timedelta(days=self.config.DEFAULT_LOOKBACK_DAYS))
+
+        for symbol in symbols:
+            try:
+                symbol_features = self._create_symbol_features(symbol, lookback_date)
+                if symbol_features:
+                    inserted = self.db_manager.insert_sentiment_features_batch(symbol_features)
+                    features_created += inserted
+                    self.logger.info(f"Created {inserted} sentiment features for {symbol}")
+            except Exception as e:
+                self.logger.error(f"Error creating featrues for {symbol}: {e}")
+
+        return {
+            'features_created': features_created,
+            'features_updated': features_updated
+        }
+    
+    def _create_symbol_features(self, symbol: str, since_date: datetime) -> List[SentimentFeatures]:
+        """Create sentiment featurse for a single symbol"""
+        # Get already-analyzed articles for this symbol
+        articles_df = self.db_manager.get_news_data(
+            symbol = symbol,
+            start_date = since_date
+        ).dropna(subset=['sentiment_score'])
+
+        if articles_df.empty:
+            self.logger.warning(f"No analyzed articles found for {symbol}")
+            return []
+        self.logger.info(f"Creating features for {symbol} with {len(articles_df)} articles...")
+        # Create time-based features
+        time_features_df = self.feature_engineer.create_time_based_features(
+            articles_df, symbol, time_windows = ['1h', '4h', '24h']
+        )
+
+        if time_features_df.empty:
+            return []
+        
+        # Convert to SentimentFeatures objects
+        features_list = []
+        for _ , row in time_features_df.iterrows():
+            try:
+                # Extract key metrics from the feature row
+                sentiment_score = row.get('sentiment_mean_24h', 0.0)
+                sentiment_momentum = row.get('sentiment_momentum_24h', 0.0)
+                news_volume = int(row.get('news_volume_24h', 0))
+                source_diversity = row.get('source_diversity_24h', 0.0)
+
+                timestamp = row['timestamp']
+                if hasattr(timestamp, 'to_pydatetime'):
+                    timestamp = timestamp.to_pydatetime() 
+
+                feature = SentimentFeatures(
+                    timestamp=timestamp,
+                    symbol=symbol,
+                    sentiment_score=float(sentiment_score),
+                    sentiment_momentum=float(sentiment_momentum),
+                    news_volume=news_volume,
+                    source_diversity=float(source_diversity)
+                )
+                features_list.append(feature)                
+
+            except Exception as e:
+                self.logger.error(f"Error creating feature object: {e}")
+                continue
+        return features_list
     
     def _analyze_batch(self, articles_df: pd.DataFrame) -> List[dict]:
         """Analyze sentiment for a batch of articles"""
@@ -172,7 +275,7 @@ class SentimentAnalysisRunner:
         return updated_count
     
     def get_sentiment_summary(self, symbols: Optional[List[str]] = None) -> pd.DataFrame:
-        """Get sentiment analysis summary"""
+        """Get sentiment analysis summary from passed symbols"""
         conditions = []
         params = []
 
@@ -214,6 +317,41 @@ class SentimentAnalysisRunner:
         
         return summary_df
     
+    def get_features_summary(self, symbols: Optional[List[str]] = None) -> pd.DataFrame:
+        """Get sentiment features summary from passed symbols"""
+        conditions = []
+        params = []
+
+        if symbols:
+            placeholders = ','.join(['?' for _ in symbols])
+            conditions.append(f"symbol IN ({placeholders})")
+            params.extend(symbols)
+
+        where_clause = " AND ".join(conditions) if conditions else "1=1"
+
+        query = f"""
+            SELECT 
+                symbol,
+                COUNT(*) as total_features,
+                AVG(sentiment_score) as avg_sentiment,
+                AVG(sentiment_momentum) as avg_momentum,
+                AVG(news_volume) as avg_news_volume,
+                AVG(source_diversity) as avg_source_diversity,
+                MIN(timestamp) as earliest_feature,
+                MAX(timestamp) as latest_feature
+            FROM sentiment_features
+            WHERE {where_clause}
+            GROUP BY symbol
+            ORDER BY total_features DESC
+        """
+        
+        import sqlite3
+        conn = sqlite3.connect(self.config.DATABASE_PATH)
+        features_df = pd.read_sql_query(query, conn, params=params)
+        conn.close()
+
+        return features_df
+
     def analyze_by_time_period(self, 
                               symbols: List[str],
                               start_date: datetime,

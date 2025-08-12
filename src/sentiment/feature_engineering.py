@@ -33,7 +33,7 @@ class SentimentFeatureEngineer:
 
     def create_time_based_features(self, articles_df: pd.DataFrame, 
                                  symbol: str, 
-                                 time_windows: List[str] = ['1h', '4h', '1h']) -> pd.DataFrame:
+                                 time_windows: List[str] = ['1h', '4h', '24h']) -> pd.DataFrame:
         """Create time-based features with differing aggregation windows"""
         if articles_df.empty:
             return pd.DataFrame()

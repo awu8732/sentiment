@@ -52,7 +52,8 @@ class DatabaseManager:
             )
         ''')
         
-        # Create sentiment features table
+        # Create sentiment features table with cross-symbol features
+        # Enhanced sentiment features table with cross-symbol features
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS sentiment_features (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -62,16 +63,46 @@ class DatabaseManager:
                 sentiment_momentum REAL,
                 news_volume INTEGER,
                 source_diversity REAL,
+                
+                -- Cross-symbol sentiment features
+                sector_sentiment_mean REAL,
+                market_sentiment_mean REAL,
+                sentiment_sector_correlation REAL,
+                sentiment_market_correlation REAL,
+                relative_sentiment_strength REAL,
+                sector_news_volume INTEGER,
+                market_news_volume INTEGER,
+                sentiment_divergence REAL,
+                sector_sentiment_volatility REAL,
+                market_sentiment_volatility REAL,
+                
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(timestamp, symbol)
             )
         ''')
         
+        # Create cross-symbol analysis cache table for performance
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS cross_symbol_cache (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME,
+                analysis_type TEXT, -- 'sector' or 'market'
+                reference_group TEXT, -- sector name or 'market'
+                sentiment_mean REAL,
+                sentiment_volatility REAL,
+                news_volume INTEGER,
+                symbols_count INTEGER,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(timestamp, analysis_type, reference_group)
+            )
+        ''')
+
         # Create indices for better performance
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_news_symbol_timestamp ON news(symbol, timestamp)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_stock_symbol_timestamp ON stock_prices(symbol, timestamp)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_sentiment_symbol_timestamp ON sentiment_features(symbol, timestamp)')
-        
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_cross_symbol_cache ON cross_symbol_cache(timestamp, analysis_type, reference_group)')
+
         conn.commit()
         conn.close()
         logger.info("Database initialized successfully")
@@ -124,7 +155,7 @@ class DatabaseManager:
         return inserted
     
     def insert_sentiment_features_batch(self, features: List[SentimentFeatures]):
-        """Insert sentiment features"""
+        """Insert sentiment features iwth cross-symbol data"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
@@ -133,10 +164,26 @@ class DatabaseManager:
             try:
                 cursor.execute('''
                     INSERT OR REPLACE INTO sentiment_features 
-                    (timestamp, symbol, sentiment_score, sentiment_momentum, news_volume, source_diversity)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                ''', (feature.timestamp, feature.symbol, feature.sentiment_score, 
-                     feature.sentiment_momentum, feature.news_volume, feature.source_diversity))
+                    (timestamp, symbol, sentiment_score, sentiment_momentum, news_volume, source_diversity,
+                     sector_sentiment_mean, market_sentiment_mean, sentiment_sector_correlation, 
+                     sentiment_market_correlation, relative_sentiment_strength, sector_news_volume,
+                     market_news_volume, sentiment_divergence, sector_sentiment_volatility,
+                     market_sentiment_volatility)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    feature.timestamp, feature.symbol, feature.sentiment_score, 
+                    feature.sentiment_momentum, feature.news_volume, feature.source_diversity,
+                    getattr(feature, 'sector_sentiment_mean', None),
+                    getattr(feature, 'market_sentiment_mean', None),
+                    getattr(feature, 'sentiment_sector_correlation', None),
+                    getattr(feature, 'sentiment_market_correlation', None),
+                    getattr(feature, 'relative_sentiment_strength', None),
+                    getattr(feature, 'sector_news_volume', None),
+                    getattr(feature, 'market_news_volume', None),
+                    getattr(feature, 'sentiment_divergence', None),
+                    getattr(feature, 'sector_sentiment_volatility', None),
+                    getattr(feature, 'market_sentiment_volatility', None)
+                ))
                 inserted += 1
             except Exception as e:
                 logger.error(f"Error inserting sentiment features: {e}")
@@ -146,6 +193,55 @@ class DatabaseManager:
         logger.info(f"Inserted {inserted} sentiment feature records")
         return inserted
     
+    def cache_cross_symbol_analysis(self, timestamp: datetime, analysis_type: str, 
+                                    reference_group: str, sentiment_mean: float,
+                                    sentiment_volatility: float, news_volume: int,
+                                    symbols_count = int):
+        """Cache cross-symbol analysis results for performance"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute('''
+                INSERT OR REPLACE INTO cross_symbol_cache
+                (timestamp, analysis_type, reference_group, sentiment_mean, 
+                 sentiment_volatility, news_volume, symbols_count)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (timestamp, analysis_type, reference_group, sentiment_mean,
+                  sentiment_volatility, news_volume, symbols_count))
+            conn.commit()
+        except Exception as e:
+            logger.error(f"Error caching cross-symbol analysis object: {e}")
+        finally:
+            conn.close()
+
+    def get_cross_symbol_cache(self, timestamp: datetime, analysis_type: str,
+                               reference_group: str) -> Optional[Dict]:
+        """Retrieve cached cross-symbol analysis metrics"""
+        conn = sqlite3.connect(self.db_path)
+
+        try:
+            query = '''
+                SELECT sentiment_mean, sentiment_volatility, news_volume, symbols_count
+                FROM cross_symbol_cache
+                WHERE timestamp = ? AND analysis_type = ? AND reference_group = ?
+            '''
+            result = pd.read_sql_query(query, conn, params=[timestamp, analysis_type, reference_group])
+            
+            if not result.empty:
+                return {
+                    'sentiment_mean': result.iloc[0]['sentiment_mean'],
+                    'sentiment_volatility': result.iloc[0]['sentiment_volatility'],
+                    'news_volume': result.iloc[0]['news_volume'],
+                    'symbols_count': result.iloc[0]['symbols_count']
+                }
+        except Exception as e:
+            logger.error(f"Error retrieving cross-symbol cache data: {e}")
+        finally:
+            conn.close()
+
+        return None
+
     def get_news_data(self, symbol: Optional[str] = None, 
                      start_date: Optional[datetime] = None,
                      end_date: Optional[datetime] = None) -> pd.DataFrame:
@@ -241,9 +337,12 @@ class DatabaseManager:
         
         cursor.execute('DELETE FROM sentiment_features WHERE timestamp < ?', (cutoff_date,))
         features_deleted = cursor.rowcount
+
+        cursor.execute('DELETE FROM cross_symbol_cache WHERE timestamp < ?', (cutoff_date,))
+        cache_deleted = cursor.rowcount
         
         conn.commit()
         conn.close()
         
-        logger.info(f"Cleaned up {news_deleted} old news records and {features_deleted} old feature records")
+        logger.info(f"Cleaned up {news_deleted} old news records, {features_deleted} old feature records, and {cache_deleted} cache entries")
         return news_deleted, features_deleted

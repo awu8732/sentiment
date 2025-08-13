@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import List, Dict
 import logging
 
-from ..models import StockData
+from src.models.stock import StockData
 from .base_collector import BaseCollector
 
 logger = logging.getLogger(__name__)

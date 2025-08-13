@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import logging
 
-from ..models import NewsArticle
+from src.models.article import NewsArticle
 from .base_collector import BaseCollector
 from config.symbols import get_company_name
 

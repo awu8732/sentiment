@@ -8,7 +8,7 @@ import logging
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from config.config import Config
 from src.data.database import DatabaseManager
-from src.data.models import NewsArticle, SentimentFeatures
+from src.models import NewsArticle, SentimentFeatures
 from src.sentiment.feature_engineering import SentimentFeatureEngineer
 from src.sentiment.analyzers import EnsembleSentimentAnalyzer
 

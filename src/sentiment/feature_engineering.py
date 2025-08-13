@@ -8,8 +8,7 @@ from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 from .analyzers import EnsembleSentimentAnalyzer
 from .utils import StatisticalUtils, TimeUtils, SentimentUtils, NewsUtils, CrossSymbolUtils
-
-from ..data.models import NewsArticle, SentimentFeatures
+from ..models import NewsArticle, SentimentFeatures
 
 logger = logging.getLogger(__name__)
 

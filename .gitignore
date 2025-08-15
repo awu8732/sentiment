@@ -22,6 +22,7 @@ ENV/
 tmp/
 
 # Data files
+data/
 data/raw/*
 data/processed/*
 data/models/*

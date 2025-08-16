@@ -1,7 +1,7 @@
 import sys
 import os
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict
 import logging
 
@@ -162,7 +162,7 @@ class SentimentAnalysisRunner:
         all_news_df = None
 
         if enable_cross_symbol:
-            self.logger("Loading all relevant news data for cross-symbol analysis...")
+            self.logger.info("Loading all relevant news data for cross-symbol analysis...")
             all_news_df = self._get_all_news_for_cross_symbol(lookback_date, cross_symbol_window)
 
         for symbol in symbols:
@@ -179,7 +179,7 @@ class SentimentAnalysisRunner:
                     features_created += inserted
                     self.logger.info(f"Created {inserted} sentiment features for {symbol}")
             except Exception as e:
-                self.logger.error(f"Error creating featrues for {symbol}: {e}")
+                self.logger.error(f"Error creating features for {symbol}: {e}")
 
         return {
             'features_created': features_created,
@@ -189,13 +189,11 @@ class SentimentAnalysisRunner:
     def _get_all_news_for_cross_symbol(self, lookback_date: datetime,
                                         window_hours: int) -> pd.DataFrame:
         """Get all news data needed for cross-symbol analysis"""
-        all_symbols = get_all_symbols()
         end_time = datetime.now()
         # Extra buffer for lookback calculations
-        start_time = lookback_date - timedelta(hours=window_hours * 2)
+        start_time = lookback_date - timedelta(hours=window_hours)
 
         all_news_df = self.db_manager.get_news_data(
-            symbols=all_symbols,
             start_date=start_time,
             end_date=end_time
         )
@@ -258,10 +256,10 @@ class SentimentAnalysisRunner:
                                                   all_symbols: List[str]) -> List[SentimentFeatures]:
         """Create sentiment features with cross-symbol for a passed symbol"""
         # Get already-analyzed articles for this symbol
-        symbol_articles_df = all_news_df[
-            (all_news_df['symbol'] == symbol) &
-            (all_news_df['timestamp'] >= since_date)
-        ].copy()
+        symbol_articles_df = self.db_manager.get_news_data(
+            symbol = symbol,
+            start_date = since_date
+        ).dropna(subset=['sentiment_score'])
 
         if symbol_articles_df.empty:
             self.logger.warning(f"No analyzed articles found for {symbol}. Returning empty list..")
@@ -300,10 +298,15 @@ class SentimentAnalysisRunner:
             try:
                 timestamp = row['timestamp']
                 if hasattr(timestamp, 'to_pydatetime'):
-                    timestamp = timestamp.to_pydatetime()
+                    timestamp = timestamp.to_pydatetime().astimezone(timezone.utc)
+                elif isinstance(timestamp, pd.Timestamp):
+                    if timestamp.tzinfo is None:
+                        timestamp = timestamp.tz_localize("UTC")
+                    else:
+                        timestamp = timestamp.tz_convert("UTC")
                 
                 market_features = self._get_market_features(
-                    symbol, all_news_df, timestamp, all_symbols
+                    symbol, timestamp, all_news_df, all_symbols
                 )
 
                 feature = SentimentFeatures(
@@ -506,7 +509,7 @@ class SentimentAnalysisRunner:
         features_df = pd.read_sql_query(query, conn, params=params)
 
         # Add cross-symbol summary if requested
-        if include_cross_symbol and not summary_df.empty:
+        if include_cross_symbol and not features_df.empty:
             cross_query = f"""
                 SELECT 
                     symbol,
@@ -525,7 +528,7 @@ class SentimentAnalysisRunner:
             
             cross_df = pd.read_sql_query(cross_query, conn, params=params)
             if not cross_df.empty:
-                summary_df = summary_df.merge(cross_df, on='symbol', how='left')
+                features_df = features_df.merge(cross_df, on='symbol', how='left')
         
         conn.close()
         return features_df

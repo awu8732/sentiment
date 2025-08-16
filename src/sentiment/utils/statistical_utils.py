@@ -56,6 +56,30 @@ class StatisticalUtils:
             return np.nan
         
     @staticmethod
+    def safe_cast(value, dtype=float):
+        """
+        Safely cast a value to float or int.
+        Returns np.nan if the value is None or cannot be converted.
+        """
+        if value is None:
+            return np.nan
+        try:
+            return dtype(value)
+        except (ValueError, TypeError) as e:
+            logger.warning(f"Failed to cast value {value} to {dtype}: {e}")
+            return np.nan
+
+    @staticmethod
+    def safe_float(value):
+        """Convenience wrapper for float"""
+        return StatisticalUtils.safe_cast(value, float)
+
+    @staticmethod
+    def safe_int(value):
+        """Convenience wrapper for int"""
+        return StatisticalUtils.safe_cast(value, int)
+        
+    @staticmethod
     def weighted_average(values: Union[List[float], np.ndarray],
                         weights: Optional[Union[List[float], np.ndarray]] = None) -> float:
         """Safely calculate weighted average, handling NaNs and shape mismatches"""

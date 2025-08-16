@@ -5,7 +5,7 @@ SYMBOLS = {
     'technology': [
         'AAPL', 'MSFT', 'GOOGL', 'GOOG', 'AMZN', 'META', 'TSLA', 'NVDA', 
         'NFLX', 'ADBE', 'CRM', 'ORCL', 'INTC', 'AMD', 'PYPL', 'UBER',
-        'SHOP', 'SQ', 'ZOOM', 'DOCU', 'ROKU', 'TWTR', 'SNAP', 'PINS'
+        'SHOP', 'DOCU', 'ROKU', 'SNAP', 'PINS'
     ],
     'finance': [
         'JPM', 'BAC', 'WFC', 'C', 'GS', 'MS', 'AXP', 'BLK', 'SCHW', 
@@ -14,13 +14,13 @@ SYMBOLS = {
     ],
     'healthcare': [
         'UNH', 'JNJ', 'PFE', 'ABT', 'TMO', 'MDT', 'DHR', 'BMY', 'ABBV',
-        'MRK', 'CVS', 'ANTM', 'CI', 'HUM', 'CNC', 'MOH', 'GILD', 'AMGN',
+        'MRK', 'CVS', 'CI', 'HUM', 'CNC', 'MOH', 'GILD', 'AMGN',
         'BIIB', 'VRTX', 'REGN', 'ISRG', 'SYK', 'BSX'
     ],
     'energy': [
         'XOM', 'CVX', 'COP', 'EOG', 'SLB', 'MPC', 'PSX', 'VLO', 'OXY',
-        'BKR', 'HAL', 'DVN', 'FANG', 'APA', 'MRO', 'HES', 'NOV', 'RRC',
-        'CLR', 'MTDR', 'SM', 'RIG', 'HP', 'CHK'
+        'BKR', 'HAL', 'DVN', 'FANG', 'APA', 'HES', 'NOV', 'RRC', 'MTDR', 
+        'SM', 'RIG', 'HP'
     ]
 }
 
@@ -61,7 +61,7 @@ COMPANY_NAMES = {
 
 # Reverse mapping implementation for sector lookup
 SYMBOL_TO_SECTOR = {}
-for sector, symbols_list in SYMBOLS:
+for sector, symbols_list in SYMBOLS.items():
     for symbol in symbols_list:
         SYMBOL_TO_SECTOR[symbol] = sector
 

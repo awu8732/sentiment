@@ -305,8 +305,8 @@ class SentimentAnalysisRunner:
                     else:
                         timestamp = timestamp.tz_convert("UTC")
                 
-                market_features = self._get_market_features(
-                    symbol, timestamp, all_news_df, all_symbols
+                market_features = self._get_market_and_sector_features(
+                    symbol, timestamp, all_news_df
                 )
 
                 feature = SentimentFeatures(
@@ -320,6 +320,9 @@ class SentimentAnalysisRunner:
                     
                     # Cross-symbol features
                     sector_sentiment_mean=self.stats_utils.safe_float(row.get('sector_sentiment_mean')),
+                    # /// sentiment std
+                    # /// sentiment skew
+                    # /// sentiment momentum
                     sentiment_sector_correlation=self.stats_utils.safe_float(row.get('sentiment_sector_correlation')),
                     relative_sentiment_strength=self.stats_utils.safe_float(row.get('relative_sentiment_strength')),
                     sector_news_volume=self.stats_utils.safe_int(row.get('sector_news_volume')),
@@ -327,7 +330,8 @@ class SentimentAnalysisRunner:
                     
                     # Market-wide features
                     market_sentiment_mean=self.stats_utils.safe_float(market_features.get('market_sentiment_mean')),
-                    sentiment_market_correlation=self.stats_utils.safe_float(market_features.get('sentiment_market_correlation')),
+                    # /// change var name in db later
+                    sentiment_market_correlation=self.stats_utils.safe_float(market_features.get('sector_market_correlation')),
                     market_news_volume=self.stats_utils.safe_int(market_features.get('market_news_volume')),
                     sector_sentiment_volatility=self.stats_utils.safe_float(market_features.get('sector_sentiment_volatility')),
                     market_sentiment_volatility=self.stats_utils.safe_float(market_features.get('market_sentiment_volatility'))
@@ -340,10 +344,9 @@ class SentimentAnalysisRunner:
         
         return features_list
 
-    def _get_market_features(self, symbol: str,
+    def _get_market_and_sector_features(self, symbol: str,
                              timestamp: datetime, 
-                             all_news_df: pd.DataFrame, 
-                             all_symbols: List[str]) -> Dict:
+                             all_news_df: pd.DataFrame) -> Dict:
         """Calculate market-wide features in last 24 hours using existing patterns"""
         window_start = timestamp - timedelta(hours=24)
         sector = get_symbol_sector(symbol)
@@ -364,10 +367,10 @@ class SentimentAnalysisRunner:
 
         return {
             'market_sentiment_mean': float(self.stats_utils.weighted_average(market_data['sentiment_score'].values)),
+            'sector_market_correlation': float(self.stats_utils.safe_correlation(sector_data['sentiment_score'].values, market_data['sentiment_score'].values)),
             'market_news_volume': len(market_data),
-            'market_volatility': float(self.stats_utils.safe_std(market_data['sentiment_score'].values)),
-            'market_correlation': 0.0, # would need target symbol sentiments for correlation
-            'sector_sentiment_volatility': float(self.stats_utils.safe_std(sector_data['sentiment_score'].values))
+            'sector_sentiment_volatility': float(self.stats_utils.safe_std(sector_data['sentiment_score'].values)),
+            'market_sentiment_volatility': float(self.stats_utils.safe_std(market_data['sentiment_score'].values))
         }
 
     def _analyze_batch(self, articles_df: pd.DataFrame) -> List[dict]:

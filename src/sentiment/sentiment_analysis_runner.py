@@ -13,6 +13,7 @@ from src.models import NewsArticle, SentimentFeatures
 from src.sentiment.feature_engineering import SentimentFeatureEngineer
 from src.sentiment.analyzers import EnsembleSentimentAnalyzer
 from src.managers.market_sentiment_manager import MarketSentimentManager
+from src.managers.cross_symbol_sentiment_manager import CrossSymbolSentimentManager
 from .utils import StatisticalUtils
 
 class SentimentAnalysisRunner:
@@ -28,6 +29,10 @@ class SentimentAnalysisRunner:
                                                      self.logger, 
                                                      self.db_manager, 
                                                      self.feature_engineer)
+        self.cross_symbol_manager = CrossSymbolSentimentManager(config,
+                                                                self.logger,
+                                                                self.db_manager,
+                                                                self.feature_engineer)
         
     def analyze_articles(self, 
                          symbols: Optional[List[str]]= None,

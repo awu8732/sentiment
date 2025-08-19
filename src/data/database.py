@@ -273,9 +273,9 @@ class DatabaseManager:
                      market_sentiment_correlation, market_sentiment_divergence)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
-                    feature.timestamp, feature.symbol, feature.sector,
-                    feature.sector_sentiment_mean, feature.sector_sentiment_skew,
-                    feature.sector_sentiment_std, feature.sector_news_volume,
+                    feature.timestamp.isoformat() if feature.timestamp else None,
+                    feature.symbol, feature.sector,feature.sector_sentiment_mean, 
+                    feature.sector_sentiment_skew, feature.sector_sentiment_std, feature.sector_news_volume,
                     feature.relative_sentiment_ratio, feature.sector_sentiment_correlation,
                     feature.sector_sentiment_divergence, feature.market_sentiment_correlation,
                     feature.market_sentiment_divergence

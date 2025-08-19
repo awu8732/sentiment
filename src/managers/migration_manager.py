@@ -56,18 +56,6 @@ class MigrationManager:
                         migration_status['tables_with_missing_columns'][table_name] = missing_columns
                         migration_status['needs_migration'] = True
             
-            # Check for foreign key constraints on sentiment_features if it exists
-            if 'sentiment_features' in existing_tables and 'sentiment_features' not in migration_status['missing_tables']:
-                cursor.execute("PRAGMA foreign_key_list(sentiment_features)")
-                foreign_keys = cursor.fetchall()
-                has_market_features_fk = any(fk[2] == 'market_features' for fk in foreign_keys)
-                
-                if not has_market_features_fk:
-                    self.logger.info("Missing foreign key constraint on sentiment_features.timestamp")
-                    if 'sentiment_features' not in migration_status['tables_with_missing_columns']:
-                        migration_status['tables_with_missing_columns']['sentiment_features'] = []
-                    migration_status['needs_migration'] = True
-            
             return migration_status
         
         finally:
@@ -79,11 +67,8 @@ class MigrationManager:
         cursor = conn.cursor()
         
         try:
-            # Enable foreign key constraints
-            cursor.execute("PRAGMA foreign_keys = ON")
-            
-            # Step 1: Create missing tables (in dependency order: market_features before sentiment_features)
-            table_creation_order = ['news', 'stock_prices', 'market_features', 'sentiment_features', 'cross_symbol_cache']
+            # Step 1: Create missing tables (in dependency order)
+            table_creation_order = ['news', 'stock_prices', 'market_features', 'sentiment_features', 'cross_symbol_features']
             
             for table_name in table_creation_order:
                 if table_name in migration_status['missing_tables']:
@@ -121,11 +106,14 @@ class MigrationManager:
                         'market_hours_sentiment': 'REAL',
                         'after_market_sentiment': 'REAL',
                         'pre_market_sentiment': 'REAL',
-                        'analysis_type': 'TEXT',
-                        'reference_group': 'TEXT',
-                        'sentiment_mean': 'REAL',
-                        'sentiment_volatility': 'REAL',
-                        'symbols_count': 'INTEGER'
+                        'sector': 'TEXT',
+                        'sector_sentiment_skew': 'REAL',
+                        'sector_sentiment_std': 'REAL',
+                        'relative_sentiment_ratio': 'REAL',
+                        'sector_sentiment_correlation': 'REAL',
+                        'sector_sentiment_divergence': 'REAL',
+                        'market_sentiment_correlation': 'REAL',
+                        'market_sentiment_divergence': 'REAL'
                     }
                     
                     for column in missing_columns:
@@ -138,22 +126,7 @@ class MigrationManager:
                                 self.logger.info(f"Populating created_at column with timestamp values for table '{table_name}'")
                                 cursor.execute(f"UPDATE {table_name} SET created_at = timestamp WHERE created_at IS NULL")
             
-            # Step 3: Handle foreign key constraint for sentiment_features if needed
-            if ('sentiment_features' in migration_status['tables_with_missing_columns'] and 
-                'sentiment_features' not in migration_status['missing_tables']):
-                
-                # Check if foreign key already exists
-                cursor.execute("PRAGMA foreign_key_list(sentiment_features)")
-                foreign_keys = cursor.fetchall()
-                has_market_features_fk = any(fk[2] == 'market_features' for fk in foreign_keys)
-                
-                if not has_market_features_fk:
-                    self.logger.info("Adding foreign key constraint to sentiment_features")
-                    # SQLite requires recreating the table to add foreign key constraints
-                    # This is a complex operation, so we'll skip it for now and note in verification
-                    self.logger.warning("Foreign key constraint addition requires table recreation - skipping for now")
-            
-            # Step 4: Create indices
+            # Step 3: Create indices
             self.logger.info("Creating/updating indices")
             for index_sql in INDEX_CREATION_SQL:
                 cursor.execute(index_sql)
@@ -201,7 +174,7 @@ class MigrationManager:
                 'idx_stock_symbol_timestamp', 
                 'idx_sentiment_symbol_timestamp',
                 'idx_market_features_timestamp',
-                'idx_cross_symbol_cache'
+                'idx_cross_symbol_features_timestamp'
             ]
             
             cursor.execute("SELECT name FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_%'")
@@ -213,19 +186,6 @@ class MigrationManager:
                 all_ok = False
             else:
                 self.logger.info("All expected indices are present")
-
-            # Verify foreign key constraints (if enabled)
-            cursor.execute("PRAGMA foreign_keys")
-            fk_enabled = cursor.fetchone()[0]
-            if fk_enabled:
-                cursor.execute("PRAGMA foreign_key_list(sentiment_features)")
-                foreign_keys = cursor.fetchall()
-                has_market_features_fk = any(fk[2] == 'market_features' for fk in foreign_keys)
-                
-                if has_market_features_fk:
-                    self.logger.info("Foreign key constraint verified on sentiment_features")
-                else:
-                    self.logger.warning("Foreign key constraint missing on sentiment_features (expected for existing databases)")
 
             return all_ok
 

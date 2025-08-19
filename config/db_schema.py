@@ -22,10 +22,11 @@ EXPECTED_SCHEMA = {
         "sector_sentiment_volatility", "market_sentiment_volatility",
         "created_at"
     ],
-    "cross_symbol_cache": [
-        "id", "timestamp", "analysis_type", "reference_group",
-        "sentiment_mean", "sentiment_volatility", "news_volume",
-        "symbols_count", "created_at"
+    "cross_symbol_features": [
+        "id", "timestamp", "symbol", "sector", "sector_sentiment_mean",
+        "sector_sentiment_skew", "sector_sentiment_std", "sector_news_volume",
+        "relative_sentiment_ratio", "sector_sentiment_correlation", "sector_sentiment_divergence",
+        "market_sentiment_correlation", "market_sentiment_divergence", "created_at"
     ]
 }
 
@@ -62,7 +63,7 @@ TABLE_CREATION_SQL = {
     "market_features": """
         CREATE TABLE market_features (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp DATETIME UNIQUE,
+            timestamp DATETIME,
             market_sentiment_mean REAL,
             market_sentiment_skew REAL,
             market_sentiment_std REAL,
@@ -74,7 +75,8 @@ TABLE_CREATION_SQL = {
             market_hours_sentiment REAL,
             pre_market_sentiment REAL,
             after_market_sentiment REAL,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(timestamp)
         )
     """,
     "sentiment_features": """
@@ -97,22 +99,26 @@ TABLE_CREATION_SQL = {
             sector_sentiment_volatility REAL,
             market_sentiment_volatility REAL,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(timestamp, symbol),
-            FOREIGN KEY (timestamp) REFERENCES market_features(timestamp) ON DELETE RESTRICT
+            UNIQUE(timestamp, symbol)
         )
     """,
-    "cross_symbol_cache": """
-        CREATE TABLE cross_symbol_cache (
+    "cross_symbol_features": """
+        CREATE TABLE cross_symbol_features (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             timestamp DATETIME,
-            analysis_type TEXT, -- 'sector' or 'market'
-            reference_group TEXT, -- sector name or 'market'
-            sentiment_mean REAL,
-            sentiment_volatility REAL,
-            news_volume INTEGER,
-            symbols_count INTEGER,
+            symbol TEXT,
+            sector TEXT,
+            sector_sentiment_mean REAL,
+            sector_sentiment_skew REAL,
+            sector_sentiment_std REAL,
+            sector_news_volume INTEGER,
+            relative_sentiment_ratio REAL,
+            sector_sentiment_correlation REAL,
+            sector_sentiment_divergence REAL,
+            market_sentiment_correlation REAL,
+            market_sentiment_divergence REAL,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(timestamp, analysis_type, reference_group)
+            UNIQUE(timestamp, symbol)
         )
     """
 }
@@ -123,5 +129,5 @@ INDEX_CREATION_SQL = [
     'CREATE INDEX IF NOT EXISTS idx_stock_symbol_timestamp ON stock_prices(symbol, timestamp)',
     'CREATE INDEX IF NOT EXISTS idx_sentiment_symbol_timestamp ON sentiment_features(symbol, timestamp)',
     'CREATE INDEX IF NOT EXISTS idx_market_features_timestamp ON market_features(timestamp)',
-    'CREATE INDEX IF NOT EXISTS idx_cross_symbol_cache ON cross_symbol_cache(timestamp, analysis_type, reference_group)'
+    'CREATE INDEX IF NOT EXISTS idx_cross_symbol_features_timestamp ON cross_symbol_features(timestamp, symbol)'
 ]

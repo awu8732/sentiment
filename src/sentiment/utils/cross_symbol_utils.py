@@ -13,14 +13,14 @@ class CrossSymbolUtils:
     def calculate_relative_sentiment(target_sentiments: List[float],
                                      sector_sentiments: List[float]) -> float:
         """Calculate the relative sentiment of target symbol vs sector/peers, returning
-        the difference between the mean target sentiment and mean sector sentiment"""
+        the ratio between the mean target sentiment and mean sector sentiment"""
 
         if not target_sentiments or not sector_sentiments:
             return 0.0
         
         target_mean = np.mean(target_sentiments)
         sector_mean = np.mean(sector_sentiments)
-        return target_mean - sector_mean
+        return target_mean / sector_mean if sector_mean != 0 else 0.0
     
     @staticmethod
     def calculate_sentiment_divergence(target_sentiments: List[float],

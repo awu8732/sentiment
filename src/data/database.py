@@ -4,7 +4,7 @@ from typing import List, Dict, Optional
 from datetime import datetime
 import logging
 
-from ..models import NewsArticle, StockData, SentimentFeatures, MarketFeatures
+from ..models import NewsArticle, StockData, SentimentFeatures, MarketFeatures, CrossSymbolFeatures
 logger = logging.getLogger(__name__)
 
 class DatabaseManager:
@@ -84,7 +84,7 @@ class DatabaseManager:
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS market_features (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp DATETIME UNIQUE,
+                timestamp DATETIME,
                 market_sentiment_mean REAL,
                 market_sentiment_skew REAL,
                 market_sentiment_std REAL,
@@ -96,23 +96,34 @@ class DatabaseManager:
                 market_hours_sentiment REAL,
                 pre_market_sentiment REAL,
                 after_market_sentiment REAL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(timestamp)
             )
         ''')
         
-        # Create cross-symbol analysis cache table for performance
+        # Create cross-symbol features table
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS cross_symbol_cache (
+            CREATE TABLE IF NOT EXISTS cross_symbol_features (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp DATETIME,
-                analysis_type TEXT, -- 'sector' or 'market'
-                reference_group TEXT, -- sector name or 'market'
-                sentiment_mean REAL,
-                sentiment_volatility REAL,
-                news_volume INTEGER,
-                symbols_count INTEGER,
+                symbol TEXT,
+                sector TEXT,
+                
+                -- Comparison against sector-wide data
+                sector_sentiment_mean REAL,
+                sector_sentiment_skew REAL,
+                sector_sentiment_std REAL,
+                sector_news_volume INTEGER,
+                relative_sentiment_ratio REAL,
+                sector_sentiment_correlation REAL,
+                sector_sentiment_divergence REAL,
+                
+                -- Comparison against market-wide data
+                market_sentiment_correlation REAL,
+                market_sentiment_divergence REAL,
+                
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(timestamp, analysis_type, reference_group)
+                UNIQUE(timestamp, symbol)
             )
         ''')
 
@@ -121,7 +132,7 @@ class DatabaseManager:
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_stock_symbol_timestamp ON stock_prices(symbol, timestamp)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_sentiment_symbol_timestamp ON sentiment_features(symbol, timestamp)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_market_features_timestamp ON market_features(timestamp)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_cross_symbol_cache ON cross_symbol_cache(timestamp, analysis_type, reference_group)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_cross_symbol_features_timestamp_symbol ON cross_symbol_features(timestamp, symbol)')
 
         conn.commit()
         conn.close()
@@ -246,54 +257,37 @@ class DatabaseManager:
         logger.info(f"Inserted {inserted} market feature records")
         return inserted
     
-    def cache_cross_symbol_analysis(self, timestamp: datetime, analysis_type: str, 
-                                    reference_group: str, sentiment_mean: float,
-                                    sentiment_volatility: float, news_volume: int,
-                                    symbols_count: int):
-        """Cache cross-symbol analysis results for performance"""
+    def insert_cross_symbol_features_batch(self, features: List[CrossSymbolFeatures]):
+        """Insert cross-symbol features"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-
-        try:
-            cursor.execute('''
-                INSERT OR REPLACE INTO cross_symbol_cache
-                (timestamp, analysis_type, reference_group, sentiment_mean, 
-                 sentiment_volatility, news_volume, symbols_count)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (timestamp, analysis_type, reference_group, sentiment_mean,
-                  sentiment_volatility, news_volume, symbols_count))
-            conn.commit()
-        except Exception as e:
-            logger.error(f"Error caching cross-symbol analysis: {e}")
-        finally:
-            conn.close()
-
-    def get_cross_symbol_cache(self, timestamp: datetime, analysis_type: str,
-                               reference_group: str) -> Optional[Dict]:
-        """Retrieve cached cross-symbol analysis metrics"""
-        conn = sqlite3.connect(self.db_path)
-
-        try:
-            query = '''
-                SELECT sentiment_mean, sentiment_volatility, news_volume, symbols_count
-                FROM cross_symbol_cache
-                WHERE timestamp = ? AND analysis_type = ? AND reference_group = ?
-            '''
-            result = pd.read_sql_query(query, conn, params=[timestamp, analysis_type, reference_group])
-            
-            if not result.empty:
-                return {
-                    'sentiment_mean': result.iloc[0]['sentiment_mean'],
-                    'sentiment_volatility': result.iloc[0]['sentiment_volatility'],
-                    'news_volume': result.iloc[0]['news_volume'],
-                    'symbols_count': result.iloc[0]['symbols_count']
-                }
-        except Exception as e:
-            logger.error(f"Error retrieving cross-symbol cache data: {e}")
-        finally:
-            conn.close()
-
-        return None
+        
+        inserted = 0
+        for feature in features:
+            try:
+                cursor.execute('''
+                    INSERT OR REPLACE INTO cross_symbol_features 
+                    (timestamp, symbol, sector, sector_sentiment_mean, sector_sentiment_skew,
+                     sector_sentiment_std, sector_news_volume, relative_sentiment_ratio,
+                     sector_sentiment_correlation, sector_sentiment_divergence,
+                     market_sentiment_correlation, market_sentiment_divergence)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    feature.timestamp, feature.symbol, feature.sector,
+                    feature.sector_sentiment_mean, feature.sector_sentiment_skew,
+                    feature.sector_sentiment_std, feature.sector_news_volume,
+                    feature.relative_sentiment_ratio, feature.sector_sentiment_correlation,
+                    feature.sector_sentiment_divergence, feature.market_sentiment_correlation,
+                    feature.market_sentiment_divergence
+                ))
+                inserted += 1
+            except Exception as e:
+                logger.error(f"Error inserting cross-symbol features: {e}")
+        
+        conn.commit()
+        conn.close()
+        logger.info(f"Inserted {inserted} cross-symbol feature records")
+        return inserted
 
     def get_news_data(self, symbol: Optional[str] = None, 
                      start_date: Optional[datetime] = None,
@@ -366,6 +360,31 @@ class DatabaseManager:
         conn.close()
         return df
     
+    def get_cross_symbol_features_data(self, symbol: Optional[str] = None,
+                                      start_date: Optional[datetime] = None,
+                                      end_date: Optional[datetime] = None) -> pd.DataFrame:
+        """Retrieve cross-symbol features data as DataFrame"""
+        conn = sqlite3.connect(self.db_path)
+        
+        query = "SELECT * FROM cross_symbol_features WHERE 1=1"
+        params = []
+        
+        if symbol:
+            query += " AND symbol = ?"
+            params.append(symbol)
+        if start_date:
+            query += " AND timestamp >= ?"
+            params.append(start_date)
+        if end_date:
+            query += " AND timestamp <= ?"
+            params.append(end_date)
+            
+        query += " ORDER BY timestamp DESC"
+        
+        df = pd.read_sql_query(query, conn, params=params)
+        conn.close()
+        return df
+    
     def get_data_summary(self) -> Dict:
         """Get summary of collected data"""
         conn = sqlite3.connect(self.db_path)
@@ -413,13 +432,26 @@ class DatabaseManager:
             ORDER BY feature_count DESC
         ''', conn)
         
+        # Cross-symbol features summary
+        cross_symbol_features_summary = pd.read_sql_query('''
+            SELECT symbol, sector, COUNT(*) as feature_count,
+                   MIN(timestamp) as earliest_feature,
+                   MAX(timestamp) as latest_feature,
+                   AVG(sector_sentiment_mean) as avg_sector_sentiment,
+                   AVG(relative_sentiment_ratio) as avg_relative_sentiment
+            FROM cross_symbol_features
+            GROUP BY symbol, sector
+            ORDER BY feature_count DESC
+        ''', conn)
+        
         conn.close()
         
         return {
             'news_summary': news_summary,
             'stock_summary': stock_summary,
             'market_features_summary': market_features_summary,
-            'sentiment_features_summary': sentiment_features_summary
+            'sentiment_features_summary': sentiment_features_summary,
+            'cross_symbol_features_summary': cross_symbol_features_summary
         }
     
     def cleanup_old_data(self, days_to_keep: int = 365):
@@ -438,11 +470,11 @@ class DatabaseManager:
         cursor.execute('DELETE FROM market_features WHERE timestamp < ?', (cutoff_date,))
         market_features_deleted = cursor.rowcount
 
-        cursor.execute('DELETE FROM cross_symbol_cache WHERE timestamp < ?', (cutoff_date,))
-        cache_deleted = cursor.rowcount
+        cursor.execute('DELETE FROM cross_symbol_features WHERE timestamp < ?', (cutoff_date,))
+        cross_symbol_deleted = cursor.rowcount
         
         conn.commit()
         conn.close()
         
-        logger.info(f"Cleaned up {news_deleted} old news records, {features_deleted} old sentiment feature records, {market_features_deleted} old market feature records, and {cache_deleted} cache entries")
-        return news_deleted, features_deleted, market_features_deleted, cache_deleted
+        logger.info(f"Cleaned up {news_deleted} old news records, {features_deleted} old sentiment feature records, {market_features_deleted} old market feature records, and {cross_symbol_deleted} cross-symbol feature records")
+        return news_deleted, features_deleted, market_features_deleted, cross_symbol_deleted

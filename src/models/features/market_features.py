@@ -16,4 +16,5 @@ class MarketFeatures:
     market_source_diversity: Optional[float] = None
     market_sentiment_regime: Optional[float] = None
     market_hours_sentiment: Optional[float] = None
-    market_after_hours_sentiment: Optional[float] = None
+    pre_market_sentiment: Optional[float] = None
+    after_market_sentiment: Optional[float] = None

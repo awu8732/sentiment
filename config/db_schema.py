@@ -12,7 +12,7 @@ EXPECTED_SCHEMA = {
         "id", "timestamp", "market_sentiment_mean", "market_sentiment_skew",
         "market_sentiment_std", "market_sentiment_momentum", "market_news_volume",
         "market_source_credibility", "market_source_diversity", "market_sentiment_regime",
-        "market_hours_sentiment", "market_after_hours_sentiment", "created_at"
+        "market_hours_sentiment", "pre_market_sentiment", "after_market_sentiment", "created_at"
     ],
     "sentiment_features": [
         "id", "timestamp", "symbol", "sentiment_score", "sentiment_momentum",
@@ -72,7 +72,8 @@ TABLE_CREATION_SQL = {
             market_source_diversity REAL,
             market_sentiment_regime REAL,
             market_hours_sentiment REAL,
-            market_after_hours_sentiment REAL,
+            pre_market_sentiment REAL,
+            after_market_sentiment REAL,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """,

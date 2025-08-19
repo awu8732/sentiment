@@ -94,7 +94,8 @@ class DatabaseManager:
                 market_source_diversity REAL,
                 market_sentiment_regime REAL,
                 market_hours_sentiment REAL,
-                market_after_hours_sentiment REAL,
+                pre_market_sentiment REAL,
+                after_market_sentiment REAL,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         ''')
@@ -224,16 +225,17 @@ class DatabaseManager:
                     INSERT OR REPLACE INTO market_features 
                     (timestamp, market_sentiment_mean, market_sentiment_skew, market_sentiment_std,
                      market_sentiment_momentum, market_news_volume, market_source_credibility,
-                     market_source_diversity, market_sentiment_regime, market_hours_sentiment,
-                     market_after_hours_sentiment)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     market_source_diversity, market_sentiment_regime, pre_market_sentiment,
+                    market_hours_sentiment, after_market_sentiment)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     feature.timestamp.isoformat() if feature.timestamp else None,
                     feature.market_sentiment_mean, feature.market_sentiment_skew,
                     feature.market_sentiment_std, feature.market_sentiment_momentum,
                     feature.market_news_volume, feature.market_source_credibility,
                     feature.market_source_diversity, feature.market_sentiment_regime,
-                    feature.market_hours_sentiment, feature.market_after_hours_sentiment
+                    feature.market_hours_sentiment, feature.pre_market_sentiment,
+                    feature.after_market_sentiment
                 ))
                 inserted += 1
             except Exception as e:

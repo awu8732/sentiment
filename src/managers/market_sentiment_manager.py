@@ -12,7 +12,7 @@ from config.symbols import get_symbols_by_sector, get_symbol_sector, get_all_sym
 from src.data.database import DatabaseManager
 from src.models.features.market_features import MarketFeatures
 from src.sentiment.feature_engineering import SentimentFeatureEngineer
-from src.sentiment.utils import NewsUtils, StatisticalUtils, SentimentUtils
+from src.sentiment.utils import NewsUtils, TimeUtils, StatisticalUtils, SentimentUtils
 
 class MarketSentimentManager:
     """Handles market-wide sentiment analysis for cross-table reference"""
@@ -26,6 +26,7 @@ class MarketSentimentManager:
         self.db_manager = db_manager
         self.feature_engineer = feature_engineer
         self.news_utils = NewsUtils()
+        self.time_utils = TimeUtils()
         self.stats_utils = StatisticalUtils()
         self.sentiment_utils = SentimentUtils()
 
@@ -80,9 +81,26 @@ class MarketSentimentManager:
             market_feature.market_source_credibility = self.news_utils.calculate_source_credibility(window_articles)
             market_feature.market_source_diversity = self.news_utils.calculate_source_diversity(window_articles)
             market_feature.market_sentiment_regime = self.sentiment_utils.detect_sentiment_regime(pd.Series(window_sentiments))
-            # add after hours sentiment later
-            # add market hours sentiment later
-
+            
+            # Calculate for market/after-market hours sentiment
+            timestamps_eastern = window_articles.index.tz_convert('US/Eastern')
+            window_articles = window_articles.assign(
+                day_type = np.where(
+                    timestamps_eastern.time < TimeUtils.MARKET_OPEN, "pre_market",
+                    np.where(
+                        timestamps_eastern.time < TimeUtils.MARKET_CLOSE, "market_hours", "after_hours"
+                    )
+                )
+            )
+            market_feature.market_hours_sentiment = window_articles.loc[
+                window_articles['day_type'] == "market_hours", "sentiment_score"
+            ].mean()
+            market_feature.pre_market_sentiment = window_articles.loc[
+                window_articles['day_type'] == "pre_market", "sentiment_score"
+            ].mean()
+            market_feature.after_market_sentiment = window_articles.loc[
+                window_articles['day_type'] == "after_hours", "sentiment_score"
+            ].mean()
             features_list.append(market_feature)
 
         # Attempt to insert new batch into db

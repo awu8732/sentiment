@@ -47,8 +47,8 @@ class TimeUtils:
     @staticmethod
     def get_trading_day_type(timestamp: datetime) -> Literal['weekend', 'pre_market', 'market_hours', 'after_hours']:
         """Categorize timestamp as one of: weekend, pre_market, market_hours, after_hours"""
-        if TimeUtils.is_weekend(timestamp):
-            return 'weekend'
+        # if TimeUtils.is_weekend(timestamp):
+        #     return 'weekend'
         
         t = TimeUtils.to_eastern(timestamp).time()
         if t < TimeUtils.MARKET_OPEN:

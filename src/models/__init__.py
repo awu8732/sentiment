@@ -1,3 +1,4 @@
 from .article import NewsArticle
 from .stock import StockData
-from .features import SentimentFeatures
+from .sentiment_features import SentimentFeatures
+from .features.market_features import MarketFeatures

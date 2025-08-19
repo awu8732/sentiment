@@ -4,7 +4,7 @@ from typing import List, Dict, Optional
 from datetime import datetime
 import logging
 
-from ..models import NewsArticle, StockData, SentimentFeatures
+from ..models import NewsArticle, StockData, SentimentFeatures, MarketFeatures
 logger = logging.getLogger(__name__)
 
 class DatabaseManager:
@@ -80,6 +80,25 @@ class DatabaseManager:
             )
         ''')
         
+        # Create market features table for market-wide features
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS market_features (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME UNIQUE,
+                market_sentiment_mean REAL,
+                market_sentiment_skew REAL,
+                market_sentiment_std REAL,
+                market_sentiment_momentum REAL,
+                market_news_volume INTEGER,
+                market_source_credibility REAL,
+                market_source_diversity REAL,
+                market_sentiment_regime REAL,
+                market_hours_sentiment REAL,
+                market_after_hours_sentiment REAL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
         # Create cross-symbol analysis cache table for performance
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS cross_symbol_cache (
@@ -100,6 +119,7 @@ class DatabaseManager:
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_news_symbol_timestamp ON news(symbol, timestamp)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_stock_symbol_timestamp ON stock_prices(symbol, timestamp)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_sentiment_symbol_timestamp ON sentiment_features(symbol, timestamp)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_market_features_timestamp ON market_features(timestamp)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_cross_symbol_cache ON cross_symbol_cache(timestamp, analysis_type, reference_group)')
 
         conn.commit()
@@ -154,7 +174,7 @@ class DatabaseManager:
         return inserted
     
     def insert_sentiment_features_batch(self, features: List[SentimentFeatures]):
-        """Insert sentiment features iwth cross-symbol data"""
+        """Insert sentiment features with cross-symbol data"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
@@ -192,10 +212,41 @@ class DatabaseManager:
         logger.info(f"Inserted {inserted} sentiment feature records")
         return inserted
     
+    def insert_market_features_batch(self, features: List[MarketFeatures]):
+        """Insert market-wide features"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        inserted = 0
+        for feature in features:
+            try:
+                cursor.execute('''
+                    INSERT OR REPLACE INTO market_features 
+                    (timestamp, market_sentiment_mean, market_sentiment_skew, market_sentiment_std,
+                     market_sentiment_momentum, market_news_volume, market_source_credibility,
+                     market_source_diversity, market_sentiment_regime, market_hours_sentiment,
+                     market_after_hours_sentiment)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    feature.timestamp, feature.market_sentiment_mean, feature.market_sentiment_skew,
+                    feature.market_sentiment_std, feature.market_sentiment_momentum,
+                    feature.market_news_volume, feature.market_source_credibility,
+                    feature.market_source_diversity, feature.market_sentiment_regime,
+                    feature.market_hours_sentiment, feature.market_after_hours_sentiment
+                ))
+                inserted += 1
+            except Exception as e:
+                logger.error(f"Error inserting market features: {e}")
+        
+        conn.commit()
+        conn.close()
+        logger.info(f"Inserted {inserted} market feature records")
+        return inserted
+    
     def cache_cross_symbol_analysis(self, timestamp: datetime, analysis_type: str, 
                                     reference_group: str, sentiment_mean: float,
                                     sentiment_volatility: float, news_volume: int,
-                                    symbols_count = int):
+                                    symbols_count: int):
         """Cache cross-symbol analysis results for performance"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
@@ -210,7 +261,7 @@ class DatabaseManager:
                   sentiment_volatility, news_volume, symbols_count))
             conn.commit()
         except Exception as e:
-            logger.error(f"Error caching cross-symbol analysis object: {e}")
+            logger.error(f"Error caching cross-symbol analysis: {e}")
         finally:
             conn.close()
 
@@ -291,6 +342,27 @@ class DatabaseManager:
         conn.close()
         return df
     
+    def get_market_features_data(self, start_date: Optional[datetime] = None,
+                                end_date: Optional[datetime] = None) -> pd.DataFrame:
+        """Retrieve market features data as DataFrame"""
+        conn = sqlite3.connect(self.db_path)
+        
+        query = "SELECT * FROM market_features WHERE 1=1"
+        params = []
+        
+        if start_date:
+            query += " AND timestamp >= ?"
+            params.append(start_date)
+        if end_date:
+            query += " AND timestamp <= ?"
+            params.append(end_date)
+            
+        query += " ORDER BY timestamp DESC"
+        
+        df = pd.read_sql_query(query, conn, params=params)
+        conn.close()
+        return df
+    
     def get_data_summary(self) -> Dict:
         """Get summary of collected data"""
         conn = sqlite3.connect(self.db_path)
@@ -317,11 +389,34 @@ class DatabaseManager:
             ORDER BY price_points DESC
         ''', conn)
         
+        # Market features summary
+        market_features_summary = pd.read_sql_query('''
+            SELECT COUNT(*) as feature_count,
+                   MIN(timestamp) as earliest_feature,
+                   MAX(timestamp) as latest_feature,
+                   AVG(market_sentiment_mean) as avg_market_sentiment,
+                   AVG(market_news_volume) as avg_news_volume
+            FROM market_features
+        ''', conn)
+        
+        # Sentiment features summary
+        sentiment_features_summary = pd.read_sql_query('''
+            SELECT symbol, COUNT(*) as feature_count,
+                   MIN(timestamp) as earliest_feature,
+                   MAX(timestamp) as latest_feature,
+                   AVG(sentiment_score) as avg_sentiment
+            FROM sentiment_features
+            GROUP BY symbol
+            ORDER BY feature_count DESC
+        ''', conn)
+        
         conn.close()
         
         return {
             'news_summary': news_summary,
-            'stock_summary': stock_summary
+            'stock_summary': stock_summary,
+            'market_features_summary': market_features_summary,
+            'sentiment_features_summary': sentiment_features_summary
         }
     
     def cleanup_old_data(self, days_to_keep: int = 365):
@@ -337,11 +432,14 @@ class DatabaseManager:
         cursor.execute('DELETE FROM sentiment_features WHERE timestamp < ?', (cutoff_date,))
         features_deleted = cursor.rowcount
 
+        cursor.execute('DELETE FROM market_features WHERE timestamp < ?', (cutoff_date,))
+        market_features_deleted = cursor.rowcount
+
         cursor.execute('DELETE FROM cross_symbol_cache WHERE timestamp < ?', (cutoff_date,))
         cache_deleted = cursor.rowcount
         
         conn.commit()
         conn.close()
         
-        logger.info(f"Cleaned up {news_deleted} old news records, {features_deleted} old feature records, and {cache_deleted} cache entries")
-        return news_deleted, features_deleted
+        logger.info(f"Cleaned up {news_deleted} old news records, {features_deleted} old sentiment feature records, {market_features_deleted} old market feature records, and {cache_deleted} cache entries")
+        return news_deleted, features_deleted, market_features_deleted, cache_deleted

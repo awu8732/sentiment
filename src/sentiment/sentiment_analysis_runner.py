@@ -127,7 +127,7 @@ class SentimentAnalysisRunner:
             self.logger.info(f"Processing BATCH {i//batch_size + 1} ({len(batch_df)} articles)")
             
             # Analyze sentiment for batch
-            batch_results = self._analyze_batch(batch_df)
+            batch_results = self.feature_engineer.analyze_article_batch_sentiment(batch_df)
             # Update database with results
             updated = self._update_sentiment_scores(batch_results)
             updated_count += updated
@@ -357,42 +357,6 @@ class SentimentAnalysisRunner:
             'market_sentiment_volatility': float(self.stats_utils.safe_std(market_data['sentiment_score'].values))
         }
 
-    def _analyze_batch(self, articles_df: pd.DataFrame) -> List[dict]:
-        """Analyze sentiment for a batch of articles"""
-        results = []
-        
-        for _, row in articles_df.iterrows():
-            try:
-                article = NewsArticle(
-                    timestamp=pd.to_datetime(row['timestamp']),
-                    title=row['title'] or '',
-                    description=row['description'] or '',
-                    source=row['source'] or '',
-                    url=row['url'] or '',
-                    symbol=row['symbol']
-                )
-
-                sentiment = self.feature_engineer.analyze_article_sentiment(article)
-                results.append({
-                    'id': row['id'],
-                    'sentiment_score': sentiment['compound'],
-                    'sentiment_positive': sentiment['positive'],
-                    'sentiment_neutral': sentiment['neutral'],
-                    'sentiment_negative': sentiment['negative']
-                })
-                
-            except Exception as e:
-                self.logger.error(f"Error analyzing article {row['id']}: {e}")
-                results.append({
-                    'id': row['id'],
-                    'sentiment_score': 0.0,
-                    'sentiment_positive': 0.0,
-                    'sentiment_neutral': 1.0,
-                    'sentiment_negative': 0.0
-                })
-        
-        return results
-    
     def _update_sentiment_scores(self, results: List[dict]) -> int:
         """Update sentiment scores in database"""
         import sqlite3

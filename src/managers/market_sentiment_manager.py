@@ -35,10 +35,18 @@ class MarketSentimentManager:
             self.logger.error("Sentiment analyzer failed to initialize")
             raise RuntimeError("Cannot proceed without sentiment analyzer")
         
-    def create_market_features(self, 
+    def create_market_features(self,
+                               lookback_date: Optional[datetime] = None, 
+                               lookback_hours: Optional[int] = None,
+                               window_size: int = 24):
+        """Outward facing method to create market-features"""
+        market_df = self._get_market_data(lookback_date, lookback_hours)
+        self._create_market_features(market_df, window_size)
+
+    def _create_market_features(self, 
                             all_news_df: pd.DataFrame,
-                            window_hours: int = 24) -> Dict[str, int]:
-        """Create market sentiment features over hourly windows for all available articles."""
+                            window_size: int = 24) -> Dict[str, int]:
+        """Create market sentiment features for given dataframe and hourly sliding window"""
         
         if all_news_df.empty:
             self.logger.warning("No analyzed articles found")
@@ -63,7 +71,7 @@ class MarketSentimentManager:
         features_list = []
 
         for timestamp in time_range:
-            window_start = timestamp - pd.Timedelta(hours=window_hours)
+            window_start = timestamp - pd.Timedelta(hours=window_size)
             window_articles = all_news_df[(all_news_df.index >= window_start) & (all_news_df.index < timestamp)]
             window_sentiments = window_articles['sentiment_score'].dropna().values
 
@@ -118,15 +126,31 @@ class MarketSentimentManager:
             'features_updated': 0
         }
 
-    def _get_market_data(self, lookback_date: datetime, window_hours: int = 24) -> pd.DataFrame:
-        """Get all news data needed for cross-symbol analysis"""
-        end_time = datetime.now()
-        start_time = lookback_date - timedelta(hours=window_hours)
+    def _get_market_data(self, 
+                         lookback_date: Optional[datetime] = None, 
+                         window_hours: Optional[int] = None) -> pd.DataFrame:
+        """Get market news data needed, given a designated windwo"""
+        now = datetime.now(timezone.utc)
 
+        # Resolve input cases (no args => full history)
+        if lookback_date is None and window_hours is None:
+            start_time, end_time = None, None
+        elif lookback_date is None and window_hours is not None:
+            start_time = now - timedelta(hours=window_hours)
+            end_time = now
+        elif lookback_date is not None and window_hours is None:
+            start_time = lookback_date
+            end_time = now
+        else:
+            start_time = lookback_date
+            end_time = lookback_date + timedelta(hours=window_hours)
+
+        # Query db
         all_news_df = self.db_manager.get_news_data(
             start_date=start_time,
             end_date=end_time
         )
 
-        # Filter only articles with sentiment scores
+        if all_news_df is None or all_news_df.empty:
+            return pd.DataFrame()
         return all_news_df[all_news_df['sentiment_score'].notna()].copy()

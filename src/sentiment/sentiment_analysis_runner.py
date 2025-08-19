@@ -12,6 +12,7 @@ from src.data.database import DatabaseManager
 from src.models import NewsArticle, SentimentFeatures
 from src.sentiment.feature_engineering import SentimentFeatureEngineer
 from src.sentiment.analyzers import EnsembleSentimentAnalyzer
+from src.managers.market_sentiment_manager import MarketSentimentManager
 from .utils import StatisticalUtils
 
 class SentimentAnalysisRunner:
@@ -21,14 +22,12 @@ class SentimentAnalysisRunner:
         self.config = config
         self.logger = logging.getLogger(__name__)
         self.db_manager = DatabaseManager(config.DATABASE_PATH)
-        self.sentiment_analyzer = EnsembleSentimentAnalyzer()
         self.feature_engineer = SentimentFeatureEngineer()
         self.stats_utils = StatisticalUtils()
-        
-        # Check if analyzer initialized successfully
-        if not self.sentiment_analyzer.is_initialized:
-            self.logger.error("Sentiment analyzer failed to initialize")
-            raise RuntimeError("Cannot proceed without sentiment analyzer")
+        self.market_manager = MarketSentimentManager(config, 
+                                                     self.logger, 
+                                                     self.db_manager, 
+                                                     self.feature_engineer)
         
     def analyze_articles(self, 
                          symbols: Optional[List[str]]= None,
@@ -163,7 +162,7 @@ class SentimentAnalysisRunner:
 
         if enable_cross_symbol:
             self.logger.info("Loading all relevant news data for cross-symbol analysis...")
-            all_news_df = self._get_all_news_for_cross_symbol(lookback_date, cross_symbol_window)
+            all_news_df = self.market_manager._get_market_data(lookback_date, cross_symbol_window)
 
         for symbol in symbols:
             try:
@@ -185,21 +184,6 @@ class SentimentAnalysisRunner:
             'features_created': features_created,
             'features_updated': features_updated
         }
-    
-    def _get_all_news_for_cross_symbol(self, lookback_date: datetime,
-                                        window_hours: int) -> pd.DataFrame:
-        """Get all news data needed for cross-symbol analysis"""
-        end_time = datetime.now()
-        # Extra buffer for lookback calculations
-        start_time = lookback_date - timedelta(hours=window_hours)
-
-        all_news_df = self.db_manager.get_news_data(
-            start_date=start_time,
-            end_date=end_time
-        )
-
-        # Filter only articles with sentiment scores
-        return all_news_df[all_news_df['sentiment_score'].notna()].copy()
     
     def _create_symbol_features(self, symbol: str, since_date: datetime) -> List[SentimentFeatures]:
         """Create sentiment featurse for a single symbol"""

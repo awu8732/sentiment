@@ -228,7 +228,8 @@ class DatabaseManager:
                      market_after_hours_sentiment)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
-                    feature.timestamp, feature.market_sentiment_mean, feature.market_sentiment_skew,
+                    feature.timestamp.isoformat() if feature.timestamp else None,
+                    feature.market_sentiment_mean, feature.market_sentiment_skew,
                     feature.market_sentiment_std, feature.market_sentiment_momentum,
                     feature.market_news_volume, feature.market_source_credibility,
                     feature.market_source_diversity, feature.market_sentiment_regime,

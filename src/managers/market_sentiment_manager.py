@@ -69,7 +69,7 @@ class MarketSentimentManager:
         time_range = pd.date_range(start=start_time, end=end_time, freq='1h')
 
         features_list = []
-
+        start_time = datetime.now()
         for timestamp in time_range:
             window_start = timestamp - pd.Timedelta(hours=window_size)
             window_articles = all_news_df[(all_news_df.index >= window_start) & (all_news_df.index < timestamp)]
@@ -118,12 +118,14 @@ class MarketSentimentManager:
                 inserted = self.db_manager.insert_market_features_batch(features_list)
                 features_created += inserted
                 self.logger.info(f"Created {inserted} new market sentiment features")
+                processing_time = (datetime.now() - start_time).total_seconds()
         except Exception as e:
             self.logger.error(f"Error inserting market features: {e}")
 
         return {
             'features_created': features_created,
-            'features_updated': 0
+            'features_updated': 0,
+            'feature_processing_time': processing_time
         }
 
     def _get_market_data(self, 

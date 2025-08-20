@@ -1,6 +1,5 @@
 import sys
 import os
-import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict
@@ -8,7 +7,6 @@ import logging
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from config.config import Config
-from config.symbols import get_symbols_by_sector, get_symbol_sector
 from src.data.database import DatabaseManager
 from src.models.features.sentiment_features import SentimentFeatures
 from src.managers import CrossSymbolSentimentManager, MarketSentimentManager
@@ -77,7 +75,176 @@ class SentimentFeatureManager:
         
         self.logger.info(f"Article analysis {'and feature creation' if create_features else ''} complete")
         return analysis_results
+    
+    def create_market_features(self,
+                               start_date: Optional[datetime] = None, 
+                               end_date: Optional[datetime] = None, 
+                               window_size: int = 24) -> Dict:
+        """Create market-wdie features from MarketSentimentManager"""
+        market_df = self.market_manager._get_market_data(start_date, end_date)
+        analysis_results = self.market_manager._create_market_features(market_df, window_size)
+        return analysis_results
+    
+    # Summary methods
+    def get_sentiment_summary(self, symbols: Optional[List[str]] = None,
+                            start_date: Optional[datetime] = None,
+                            end_date: Optional[datetime] = None) -> pd.DataFrame:
+        """Get sentiment analysis summary from passed symbols, with optional date filters"""
+        conditions = []
+        params = []
 
+        if symbols:
+            placeholders = ','.join(['?' for _ in symbols])
+            conditions.append(f"symbol IN ({placeholders})")
+            params.extend(symbols)
+
+        if start_date:
+            conditions.append("timestamp >= ?")
+            params.append(start_date.isoformat() if isinstance(start_date, datetime) else start_date)
+
+        if end_date:
+            conditions.append("timestamp <= ?")
+            params.append(end_date.isoformat() if isinstance(end_date, datetime) else end_date)
+
+        where_clause = " AND ".join(conditions) if conditions else "1=1"
+
+        query = f"""
+            SELECT 
+                symbol,
+                COUNT(*) as total_articles,
+                COUNT(CASE WHEN sentiment_score IS NOT NULL THEN 1 END) as analyzed_articles,
+                AVG(sentiment_score) as avg_sentiment,
+                MIN(sentiment_score) as min_sentiment,
+                MAX(sentiment_score) as max_sentiment,
+                COUNT(CASE WHEN sentiment_score > 0.1 THEN 1 END) as positive_articles,
+                COUNT(CASE WHEN sentiment_score < -0.1 THEN 1 END) as negative_articles,
+                COUNT(CASE WHEN sentiment_score BETWEEN -0.1 AND 0.1 THEN 1 END) as neutral_articles,
+                MIN(timestamp) as earliest_article,
+                MAX(timestamp) as latest_article
+            FROM news
+            WHERE {where_clause}
+            GROUP BY symbol
+            ORDER BY analyzed_articles DESC
+        """
+        
+        import sqlite3
+        conn = sqlite3.connect(self.config.DATABASE_PATH)
+        summary_df = pd.read_sql_query(query, conn, params=params)
+        conn.close()
+            
+    def get_features_summary(self, symbols: Optional[List[str]] = None,
+                            include_cross_symbol: bool = True,
+                            start_date: Optional[datetime] = None,
+                            end_date: Optional[datetime] = None) -> pd.DataFrame:
+        """Get sentiment features summary from passed symbols, with optional date filters"""
+        conditions = []
+        params = []
+
+        if symbols:
+            placeholders = ','.join(['?' for _ in symbols])
+            conditions.append(f"symbol IN ({placeholders})")
+            params.extend(symbols)
+
+        if start_date:
+            conditions.append("timestamp >= ?")
+            params.append(start_date.isoformat() if isinstance(start_date, datetime) else start_date)
+
+        if end_date:
+            conditions.append("timestamp <= ?")
+            params.append(end_date.isoformat() if isinstance(end_date, datetime) else end_date)
+
+        where_clause = " AND ".join(conditions) if conditions else "1=1"
+
+        query = f"""
+            SELECT 
+                symbol,
+                COUNT(*) as total_features,
+                AVG(sentiment_score) as avg_sentiment,
+                AVG(sentiment_std) as avg_std,
+                AVG(sentiment_skew) as avg_skew,
+                AVG(sentiment_momentum) as avg_momentum,
+                AVG(sentiment_persistence) as avg_persistence,
+                AVG(news_volume) as avg_news_volume,
+                MIN(timestamp) as earliest_feature,
+                MAX(timestamp) as latest_feature
+            FROM sentiment_features
+            WHERE {where_clause}
+            GROUP BY symbol
+            ORDER BY total_features DESC
+        """
+        
+        import sqlite3
+        conn = sqlite3.connect(self.config.DATABASE_PATH)
+        features_df = pd.read_sql_query(query, conn, params=params)
+
+        # Add cross-symbol summary if requested
+        if include_cross_symbol and not features_df.empty:
+            cross_query = f"""
+                SELECT 
+                    symbol,
+                    COUNT(*) as cross_symbol_records,
+                    AVG(sector_sentiment_mean) as avg_sector_sentiment,
+                    AVG(sector_sentiment_std) as avg_sector_std,
+                    AVG(sector_sentiment_skew) as avg_sector_skew,
+                    AVG(relative_sentiment_ratio) as avg_relative_ratio,
+                    AVG(sentiment_sector_correlation) as avg_sector_correlation,
+                    AVG(sentiment_sector_divergence) as avg_sector_divergence,
+                    AVG(sector_news_volume) as avg_sector_news_volume
+                FROM cross_symbol_features
+                WHERE {where_clause}
+                    AND sector_sentiment_mean IS NOT NULL
+                GROUP BY symbol
+            """
+            
+            cross_df = pd.read_sql_query(cross_query, conn, params=params)
+            if not cross_df.empty:
+                features_df = features_df.merge(cross_df, on='symbol', how='left')
+        
+        conn.close()
+        return features_df
+
+    def get_market_features_summary(self, start_date: Optional[datetime] = None,
+                                end_date: Optional[datetime] = None) -> pd.DataFrame:
+        """Get market-wide features summary"""
+        params = []
+        query = """
+            SELECT 
+                symbol,
+                COUNT(*) as total_features,
+                AVG(market_sentiment_mean) as avg_sentiment,
+                AVG(market_sentiment_std) as avg_std,
+                AVG(market_sentiment_skew) as avg_skew,
+                AVG(market_sentiment_momentum) as avg_momentum,
+                AVG(market_news_volume) as avg_news_volume,
+                AVG(market_hours_sentiment) as avg_market_hours_sentiment,
+                AVG(pre_market_sentiment) as avg_pre_market_sentiment,
+                AVG(after_hours_sentiment) as avg_after_hours_sentiment,
+                MIN(timestamp) as earliest_feature,
+                MAX(timestamp) as latest_feature
+            FROM market_features
+            WHERE 1=1
+        """
+
+        if start_date:
+            query += " AND timestamp >= ?"
+            params.append(start_date.isoformat() if isinstance(start_date, datetime) else start_date)
+
+        if end_date:
+            query += " AND timestamp <= ?"
+            params.append(end_date.isoformat() if isinstance(end_date, datetime) else end_date)
+
+        query += """
+            GROUP BY symbol
+            ORDER BY total_features DESC
+        """
+
+        import sqlite3
+        conn = sqlite3.connect(self.config.DATABASE_PATH)
+        features_df = pd.read_sql_query(query, conn, params=params)
+        conn.close()
+        return features_df
+
+    # Interal processing methods
     def _analyze_article_sentiment(self,
                                    symbols: Optional[List[str]] = None,
                                    article_ids: Optional[List[int]] = None,

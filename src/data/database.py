@@ -287,10 +287,17 @@ class DatabaseManager:
             params.append(symbol)
         if start_date:
             query += " AND timestamp >= ?"
-            params.append(start_date)
+            if isinstance(start_date, datetime):
+                params.append(start_date.isoformat())
+            else:
+                params.append(start_date)
         if end_date:
             query += " AND timestamp <= ?"
-            params.append(end_date)
+            if isinstance(end_date, datetime):
+                params.append(end_date.isoformat())
+            else:
+                params.append(end_date)
+
             
         query += " ORDER BY timestamp DESC"
         
@@ -312,10 +319,16 @@ class DatabaseManager:
             params.append(symbol)
         if start_date:
             query += " AND timestamp >= ?"
-            params.append(start_date)
+            if isinstance(start_date, datetime):
+                params.append(start_date.isoformat())
+            else:
+                params.append(start_date)
         if end_date:
             query += " AND timestamp <= ?"
-            params.append(end_date)
+            if isinstance(end_date, datetime):
+                params.append(end_date.isoformat())
+            else:
+                params.append(end_date)
             
         query += " ORDER BY timestamp"
         
@@ -337,10 +350,16 @@ class DatabaseManager:
             params.append(symbol)
         if start_date:
             query += " AND timestamp >= ?"
-            params.append(start_date)
+            if isinstance(start_date, datetime):
+                params.append(start_date.isoformat())
+            else:
+                params.append(start_date)
         if end_date:
             query += " AND timestamp <= ?"
-            params.append(end_date)
+            if isinstance(end_date, datetime):
+                params.append(end_date.isoformat())
+            else:
+                params.append(end_date)
             
         query += " ORDER BY timestamp DESC"
         
@@ -358,10 +377,16 @@ class DatabaseManager:
         
         if start_date:
             query += " AND timestamp >= ?"
-            params.append(start_date)
+            if isinstance(start_date, datetime):
+                params.append(start_date.isoformat())
+            else:
+                params.append(start_date)
         if end_date:
             query += " AND timestamp <= ?"
-            params.append(end_date)
+            if isinstance(end_date, datetime):
+                params.append(end_date.isoformat())
+            else:
+                params.append(end_date)
             
         query += " ORDER BY timestamp DESC"
         
@@ -383,10 +408,16 @@ class DatabaseManager:
             params.append(symbol)
         if start_date:
             query += " AND timestamp >= ?"
-            params.append(start_date)
+            if isinstance(start_date, datetime):
+                params.append(start_date.isoformat())
+            else:
+                params.append(start_date)
         if end_date:
             query += " AND timestamp <= ?"
-            params.append(end_date)
+            if isinstance(end_date, datetime):
+                params.append(end_date.isoformat())
+            else:
+                params.append(end_date)
             
         query += " ORDER BY timestamp DESC"
         

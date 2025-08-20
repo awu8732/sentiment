@@ -209,7 +209,7 @@ class SentimentFeatureManager:
         features_list = []
         for timestamp in time_range:
             window_start = timestamp - pd.Timedelta(hours=window_size)
-            window_articles = symbol_df[(symbol_df.index >= window_start) & (symbol_df.index < timestamp)]
+            window_articles = symbol_df[(symbol_df.index >= window_start) & (symbol_df.index < timestamp)].reset_index()
             window_sentiments = window_articles['sentiment_score'].dropna()
             sentiment_feature = SentimentFeatures(
                 timestamp=timestamp,

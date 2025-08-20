@@ -34,13 +34,16 @@ class SentimentUtils:
     @staticmethod
     def calculate_sentiment_momentum(sentiments: np.ndarray, decay_factor: float = 1.0) -> float:
         """Compute exponentially-weighted sentiment momentum"""
+        if not isinstance(sentiments, np.ndarray):
+            sentiments = np.array(sentiments)
         if len(sentiments) == 0:
             return np.nan
+        
         weights = np.exp(np.linspace(-decay_factor, 0, num=len(sentiments)))
         if weights.sum() == 0:
             return np.nan
         weights /= weights.sum()
-
+        return np.dot(weights, sentiments)
     
     @staticmethod
     def calculate_extreme_sentiment_ratio(sentiments: pd.Series, threshold: float = 0.5) -> float:

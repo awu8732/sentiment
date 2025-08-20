@@ -33,6 +33,17 @@ class CrossSymbolSentimentManager:
         if not self.feature_engineer.sentiment_analyzer.is_initialized:
             self.logger.error("Sentiment analyzer failed to initialize")
             raise RuntimeError("Cannot proceed without sentiment analyzer")
+        
+    def create_cross_sector_features(self, 
+                                     symbol: str,
+                                     start_date: Optional[datetime] = None, 
+                                     end_date: Optional[datetime] = None,
+                                     window_size: int = 24 ):
+        """Outward facing method to create cross-symbol features"""
+        symbol_df = self._get_symbol_sentiment_data(symbol, start_date, end_date)
+        sector_df = self._get_sector_data(symbol, start_date, end_date)
+
+        self._create_cross_sector_features(symbol, symbol_df, sector_df, window_size)
     
     def _create_cross_sector_features(self, 
                                      symbol: str,
@@ -112,11 +123,11 @@ class CrossSymbolSentimentManager:
 
     def _get_sector_data(self, 
                         symbol: str,
-                        lookback_date: Optional[datetime] = None, 
-                        window_hours: Optional[int] = None
-                        ) -> pd.DataFrame:
+                        start_date: Optional[datetime] = None, 
+                        end_date: Optional[datetime] = None) -> pd.DataFrame:
         """Get sector data needed for cross-symbol analysis, given a symbol and designated window"""
-        now = datetime.now(timezone.utc)
+        if end_date is None:
+            end_date = datetime.now(timezone.utc)
 
         # Get sector and associated symbols
         sector = get_symbol_sector(symbol)
@@ -124,26 +135,13 @@ class CrossSymbolSentimentManager:
         if not sector_symbols:
             return pd.DataFrame()
 
-        # Resolve time window (no args => full history)
-        if lookback_date is None and window_hours is None:
-            start_time, end_time = None, None
-        elif lookback_date is None and window_hours is not None:
-            start_time = now - timedelta(hours=window_hours)
-            end_time = now
-        elif lookback_date is not None and window_hours is None:
-            start_time = lookback_date
-            end_time = now
-        else:
-            start_time = lookback_date
-            end_time = lookback_date + timedelta(hours=window_hours)
-
         # Accumulate news for each symbol in the sector
         sector_dfs = []
-        for symbol in sector_symbols:
+        for sym in sector_symbols:
             df = self.db_manager.get_news_data(
-                symbol=symbol,
-                start_date=start_time,
-                end_date=end_time,
+                symbol=sym,
+                start_date=start_date,
+                end_date=end_date,
             )
             if df is not None and not df.empty:
                 sector_dfs.append(df[df['sentiment_score'].notna()].copy())
@@ -152,5 +150,4 @@ class CrossSymbolSentimentManager:
             return pd.DataFrame()
 
         # Stitch together into one DataFrame
-        sector_df = pd.concat(sector_dfs, ignore_index=True)
-        return sector_df
+        return pd.concat(sector_dfs, ignore_index=True)

@@ -1,4 +1,4 @@
-from .sentiment_feature_manager import SentimentFeatureManager
 from .cross_symbol_sentiment_manager import CrossSymbolSentimentManager
 from .market_sentiment_manager import MarketSentimentManager
 from .migration_manager import MigrationManager
+from .sentiment_feature_manager import SentimentFeatureManager

@@ -51,30 +51,21 @@ class DatabaseManager:
             )
         ''')
         
-        # Create sentiment features table with cross-symbol features
-        # Enhanced sentiment features table with cross-symbol features
+        # Create sentiment features table matching the SentimentFeatures dataclass
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS sentiment_features (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp DATETIME,
                 symbol TEXT,
                 sentiment_score REAL,
+                sentiment_skew REAL,
+                sentiment_std REAL,
                 sentiment_momentum REAL,
+                extreme_sentiment_ratio REAL,
+                sentiment_persistence REAL,
+                news_flow_intensity REAL,
                 news_volume INTEGER,
                 source_diversity REAL,
-                
-                -- Cross-symbol sentiment features
-                sector_sentiment_mean REAL,
-                market_sentiment_mean REAL,
-                sentiment_sector_correlation REAL,
-                sentiment_market_correlation REAL,
-                relative_sentiment_strength REAL,
-                sector_news_volume INTEGER,
-                market_news_volume INTEGER,
-                sentiment_divergence REAL,
-                sector_sentiment_volatility REAL,
-                market_sentiment_volatility REAL,
-                
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(timestamp, symbol)
             )
@@ -186,7 +177,7 @@ class DatabaseManager:
         return inserted
     
     def insert_sentiment_features_batch(self, features: List[SentimentFeatures]):
-        """Insert sentiment features with cross-symbol data"""
+        """Insert sentiment features matching the SentimentFeatures dataclass"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
@@ -195,25 +186,15 @@ class DatabaseManager:
             try:
                 cursor.execute('''
                     INSERT OR REPLACE INTO sentiment_features 
-                    (timestamp, symbol, sentiment_score, sentiment_momentum, news_volume, source_diversity,
-                     sector_sentiment_mean, market_sentiment_mean, sentiment_sector_correlation, 
-                     sentiment_market_correlation, relative_sentiment_strength, sector_news_volume,
-                     market_news_volume, sentiment_divergence, sector_sentiment_volatility,
-                     market_sentiment_volatility)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (timestamp, symbol, sentiment_score, sentiment_skew, sentiment_std, 
+                     sentiment_momentum, extreme_sentiment_ratio, sentiment_persistence, 
+                     news_flow_intensity, news_volume, source_diversity)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     feature.timestamp, feature.symbol, feature.sentiment_score, 
-                    feature.sentiment_momentum, feature.news_volume, feature.source_diversity,
-                    getattr(feature, 'sector_sentiment_mean', None),
-                    getattr(feature, 'market_sentiment_mean', None),
-                    getattr(feature, 'sentiment_sector_correlation', None),
-                    getattr(feature, 'sentiment_market_correlation', None),
-                    getattr(feature, 'relative_sentiment_strength', None),
-                    getattr(feature, 'sector_news_volume', None),
-                    getattr(feature, 'market_news_volume', None),
-                    getattr(feature, 'sentiment_divergence', None),
-                    getattr(feature, 'sector_sentiment_volatility', None),
-                    getattr(feature, 'market_sentiment_volatility', None)
+                    feature.sentiment_skew, feature.sentiment_std, feature.sentiment_momentum,
+                    feature.extreme_sentiment_ratio, feature.sentiment_persistence,
+                    feature.news_flow_intensity, feature.news_volume, feature.source_diversity
                 ))
                 inserted += 1
             except Exception as e:
@@ -338,6 +319,31 @@ class DatabaseManager:
         df = pd.read_sql_query(query, conn, params=params)
         conn.close()
         return df
+
+    def get_sentiment_features_data(self, symbol: Optional[str] = None,
+                                   start_date: Optional[datetime] = None,
+                                   end_date: Optional[datetime] = None) -> pd.DataFrame:
+        """Retrieve sentiment features data as DataFrame"""
+        conn = sqlite3.connect(self.db_path)
+        
+        query = "SELECT * FROM sentiment_features WHERE 1=1"
+        params = []
+        
+        if symbol:
+            query += " AND symbol = ?"
+            params.append(symbol)
+        if start_date:
+            query += " AND timestamp >= ?"
+            params.append(start_date)
+        if end_date:
+            query += " AND timestamp <= ?"
+            params.append(end_date)
+            
+        query += " ORDER BY timestamp DESC"
+        
+        df = pd.read_sql_query(query, conn, params=params)
+        conn.close()
+        return df
     
     def get_market_features_data(self, start_date: Optional[datetime] = None,
                                 end_date: Optional[datetime] = None) -> pd.DataFrame:
@@ -426,7 +432,9 @@ class DatabaseManager:
             SELECT symbol, COUNT(*) as feature_count,
                    MIN(timestamp) as earliest_feature,
                    MAX(timestamp) as latest_feature,
-                   AVG(sentiment_score) as avg_sentiment
+                   AVG(sentiment_score) as avg_sentiment,
+                   AVG(sentiment_momentum) as avg_sentiment_momentum,
+                   AVG(news_volume) as avg_news_volume
             FROM sentiment_features
             GROUP BY symbol
             ORDER BY feature_count DESC

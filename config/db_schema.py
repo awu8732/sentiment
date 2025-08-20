@@ -15,12 +15,9 @@ EXPECTED_SCHEMA = {
         "market_hours_sentiment", "pre_market_sentiment", "after_market_sentiment", "created_at"
     ],
     "sentiment_features": [
-        "id", "timestamp", "symbol", "sentiment_score", "sentiment_momentum",
-        "news_volume", "source_diversity", "sector_sentiment_mean", "market_sentiment_mean", 
-        "sentiment_sector_correlation", "sentiment_market_correlation", "relative_sentiment_strength",
-        "sector_news_volume", "market_news_volume", "sentiment_divergence",
-        "sector_sentiment_volatility", "market_sentiment_volatility",
-        "created_at"
+        "id", "timestamp", "symbol", "sentiment_score", "sentiment_skew", "sentiment_std",
+        "sentiment_momentum", "extreme_sentiment_ratio", "sentiment_persistence", 
+        "news_flow_intensity", "news_volume", "source_diversity", "created_at"
     ],
     "cross_symbol_features": [
         "id", "timestamp", "symbol", "sector", "sector_sentiment_mean",
@@ -85,19 +82,14 @@ TABLE_CREATION_SQL = {
             timestamp DATETIME,
             symbol TEXT,
             sentiment_score REAL,
+            sentiment_skew REAL,
+            sentiment_std REAL,
             sentiment_momentum REAL,
+            extreme_sentiment_ratio REAL,
+            sentiment_persistence REAL,
+            news_flow_intensity REAL,
             news_volume INTEGER,
             source_diversity REAL,
-            sector_sentiment_mean REAL,
-            market_sentiment_mean REAL,
-            sentiment_sector_correlation REAL,
-            sentiment_market_correlation REAL,
-            relative_sentiment_strength REAL,
-            sector_news_volume INTEGER,
-            market_news_volume INTEGER,
-            sentiment_divergence REAL,
-            sector_sentiment_volatility REAL,
-            market_sentiment_volatility REAL,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(timestamp, symbol)
         )

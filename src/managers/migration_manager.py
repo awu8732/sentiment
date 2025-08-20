@@ -84,19 +84,14 @@ class MigrationManager:
                     cursor.execute(f"PRAGMA table_info({table_name})")
                     current_columns = {col[1]: col[2] for col in cursor.fetchall()}
                     
-                    # Column type mapping
+                    # Updated column type mapping with new sentiment_features fields
                     column_types = {
                         'created_at': 'DATETIME DEFAULT CURRENT_TIMESTAMP',
-                        'sector_sentiment_mean': 'REAL',
-                        'market_sentiment_mean': 'REAL',
-                        'sentiment_sector_correlation': 'REAL',
-                        'sentiment_market_correlation': 'REAL',
-                        'relative_sentiment_strength': 'REAL',
-                        'sector_news_volume': 'INTEGER',
-                        'market_news_volume': 'INTEGER',
-                        'sentiment_divergence': 'REAL',
-                        'sector_sentiment_volatility': 'REAL',
-                        'market_sentiment_volatility': 'REAL',
+                        'sentiment_skew': 'REAL',
+                        'sentiment_std': 'REAL',
+                        'extreme_sentiment_ratio': 'REAL',
+                        'sentiment_persistence': 'REAL',
+                        'news_flow_intensity': 'REAL',
                         'market_sentiment_skew': 'REAL',
                         'market_sentiment_std': 'REAL',
                         'market_sentiment_momentum': 'REAL',

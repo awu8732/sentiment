@@ -293,31 +293,4 @@ class SentimentFeatureEngineer:
                 target_sentiments, sector_sentiments
             )
         }
-    
-
-    def update_sentiment_scores(self, results: List[dict]) -> int:
-        """Update sentiment scores in database"""
-        import sqlite3
-        conn = sqlite3.connect(self.config.DATABASE_PATH)
-        cursor = conn.cursor()
-        
-        updated_count = 0
-        for result in results:
-            try:
-                cursor.execute("""
-                    UPDATE news 
-                    SET sentiment_score = ?,
-                        created_at = CURRENT_TIMESTAMP
-                    WHERE id = ?
-                """, (result['sentiment_score'], result['id']))
-                
-                if cursor.rowcount > 0:
-                    updated_count += 1
-                    
-            except Exception as e:
-                self.logger.error(f"Error updating article {result['id']}: {e}")
-        
-        conn.commit()
-        conn.close()
-        return updated_count
 

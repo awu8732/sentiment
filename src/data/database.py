@@ -141,7 +141,8 @@ class DatabaseManager:
                     INSERT OR IGNORE INTO news 
                     (timestamp, title, description, source, url, symbol, sentiment_score)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
-                ''', (article.timestamp, article.title, article.description, 
+                ''', (article.timestamp.isoformat() if article.timestamp else None,
+                      article.title, article.description, 
                      article.source, article.url, article.symbol, article.sentiment_score))
                 if cursor.rowcount > 0:
                     inserted += 1
@@ -165,7 +166,8 @@ class DatabaseManager:
                     INSERT OR REPLACE INTO stock_prices 
                     (timestamp, symbol, open, high, low, close, volume, adj_close)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (data.timestamp, data.symbol, data.open, data.high, 
+                ''', (data.timestamp.isoformat() if data.timestamp else None,
+                      data.symbol, data.open, data.high, 
                      data.low, data.close, data.volume, data.adj_close))
                 inserted += 1
             except Exception as e:
@@ -191,7 +193,8 @@ class DatabaseManager:
                      news_flow_intensity, news_volume, source_diversity)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
-                    feature.timestamp, feature.symbol, feature.sentiment_score, 
+                    feature.timestamp.isoformat() if feature.timestamp else None,
+                    feature.symbol, feature.sentiment_score, 
                     feature.sentiment_skew, feature.sentiment_std, feature.sentiment_momentum,
                     feature.extreme_sentiment_ratio, feature.sentiment_persistence,
                     feature.news_flow_intensity, feature.news_volume, feature.source_diversity

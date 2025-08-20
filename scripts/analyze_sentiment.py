@@ -30,6 +30,7 @@ from config.config import Config
 from config.symbols import get_all_symbols, get_symbols_by_sector
 from src.utils.logger import setup_logging
 from src.sentiment.sentiment_analysis_runner import SentimentAnalysisRunner
+from src.managers.sentiment_feature_manager import SentimentFeatureManager
 
 def main():
     parser = argparse.ArgumentParser(
@@ -78,6 +79,7 @@ def main():
     logger = setup_logging(config)
     try:
         runner = SentimentAnalysisRunner(config)
+        manager = SentimentFeatureManager(config)
         # Parse since date
         since_date = None
         if args.since:
@@ -111,7 +113,7 @@ def main():
         logger.info("Starting sentiment analysis...")
         
         if args.article_ids:
-            results = runner.analyze_articles(
+            results = manager.analyze_articles(
                 article_ids=args.article_ids,
                 batch_size=args.batch_size,
                 force_reanalyze=args.force,
@@ -119,18 +121,16 @@ def main():
                 cross_symbol_window=args.cross_window_hours
             )
         else:
-            results = runner.analyze_articles(
+            results = manager.analyze_articles(
                 symbols=symbols,
-                since_date=since_date,
+                start_date=since_date,
                 batch_size=args.batch_size,
                 force_reanalyze=args.force,
                 enable_cross_symbol=args.cross_symbol,
-                cross_symbol_window=args.cross_window_hours
+                window_size=args.cross_window_hours
             )
-        
-        # Print results
         print_analysis_results(results)
-
+        return 0
         # Show updated summary
         if results['articles_updated'] > 0:
             print("\n=== UPDATED SENTIMENT SUMMARY ===")
@@ -249,7 +249,8 @@ def print_analysis_results(results):
     print(f"Articles processed: {results['articles_processed']}")
     print(f"Articles updated: {results['articles_updated']}")
     print(f"Symbols processed: {len(results['symbols_processed'])}")
-    print(f"Processing time: {results['processing_time']:.2f} seconds")
+    print(f"Sentiment processing time: {results['sentiment_processing_time']:.2f} seconds")
+    print(f"Feature processing time: {results['feature_processing_time']:.2f} seconds")
     
     if results.get('cross_symbol_features'):
         print("Cross-symbol features: ENABLED")

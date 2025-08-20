@@ -2,8 +2,10 @@ import pandas as pd
 import numpy as np
 from typing import Dict, Optional
 import logging
+import warnings
 
 logger = logging.getLogger(__name__)
+warnings.filterwarnings("error")
 
 class NewsUtils:
     """Utility functions for analyzing news article data"""

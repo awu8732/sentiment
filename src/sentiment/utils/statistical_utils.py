@@ -4,8 +4,10 @@ from typing import List, Optional, Union
 import pytz
 import logging
 from scipy.stats import skew as scipy_skew
+import warnings
 
 logger = logging.getLogger(__name__)
+warnings.filterwarnings("error")
 
 class StatisticalUtils:
     """Utility class for statistical calculation"""

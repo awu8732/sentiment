@@ -29,7 +29,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from config.config import Config
 from config.symbols import get_all_symbols, get_symbols_by_sector
 from src.utils.logger import setup_logging
-from src.sentiment.sentiment_analysis_runner import SentimentAnalysisRunner
 from src.managers.sentiment_feature_manager import SentimentFeatureManager
 
 def main():
@@ -78,7 +77,6 @@ def main():
     config = Config()
     logger = setup_logging(config)
     try:
-        runner = SentimentAnalysisRunner(config)
         manager = SentimentFeatureManager(config)
         # Parse since date
         since_date = None
@@ -100,14 +98,6 @@ def main():
             symbols = None  # Analyze all symbols
         elif args.cross_insights:
             symbols = args.symbols if args.symbols else get_all_symbols()[:10]  # Default to top 10
-        
-        # Show summary if requested (No analysis executed)
-        if args.summary:
-            return show_summary(runner, symbols, args.cross_symbol)
-        
-        # Show cross-symbol insights if requested
-        if args.cross_insights:
-            return show_cross_symbol_insights(runner, symbols, args.days_back)
         
         # Run sentiment analysis
         logger.info("Starting sentiment analysis...")
@@ -131,34 +121,7 @@ def main():
             )
         print_analysis_results(results)
         return 0
-        # Show updated summary
-        if results['articles_updated'] > 0:
-            print("\n=== UPDATED SENTIMENT SUMMARY ===")
-            summary_df = runner.get_sentiment_summary(results['symbols_processed'])
-            if not summary_df.empty:
-                print(summary_df[['symbol', 'analyzed_articles', 'avg_sentiment', 
-                                'positive_articles', 'negative_articles', 'analysis_progress']].to_string(index=False))
-            
-            # Show features summary with cross-symbol analysis if trends are enabled
-            print("\n=== FEATURES SUMMARY ===")
-            include_cross = hasattr(args, 'cross_symbol') and args.cross_symbol
-            features_df = runner.get_features_summary(results['symbols_processed'], 
-                                                    include_cross_symbol=include_cross)
-            if not features_df.empty:
-                # Base columns
-                cols = ['symbol', 'total_features', 'avg_sentiment', 'avg_momentum', 
-                        'avg_news_volume', 'avg_source_diversity']
-                # Add cross-symbol columns if they exist
-                if 'avg_sector_sentiment' in features_df.columns:
-                    cols.extend(['avg_sector_sentiment', 'avg_market_sentiment', 'avg_relative_strength'])
-                print(features_df[cols].to_string(index=False))
-                # Show trends if requested
-                if args.trends and symbols:
-                    show_sentiment_trends(runner, symbols, args.days_back, args.cross_symbol)
-        
-        logger.info("Sentiment analysis completed successfully")
-        return 0
-        
+    
     except Exception as e:
         logger.error(f"Sentiment analysis failed: {e}")
         return 1
@@ -186,60 +149,6 @@ def show_summary(runner, symbols, include_cross_symbol):
             print(f"Cross-symbol feature records: {cross_symbol_records}")
     else:
         print("No articles found matching criteria")
-    
-    return 0
-
-def show_cross_symbol_insights(runner, symbols, days_back):
-    """Show cross-symbol sentiment insights"""
-    print("\n=== CROSS-SYMBOL SENTIMENT INSIGHTS ===")
-    
-    insights_df = runner.get_cross_symbol_insights(symbols, days_back)
-    
-    if not insights_df.empty:
-        print(f"Analysis period: Last {days_back} days")
-        print(f"Symbols analyzed: {len(insights_df)}")
-        print()
-        
-        # Format and display insights
-        display_columns = [
-            'symbol', 'relative_strength', 'sector_correlation', 
-            'market_correlation', 'sentiment_divergence', 'observation_count'
-        ]
-        
-        # Filter columns that exist
-        available_columns = [col for col in display_columns if col in insights_df.columns]
-        
-        print(insights_df[available_columns].round(4).to_string(index=False))
-        
-        # Highlight interesting findings
-        print("\n=== KEY INSIGHTS ===")
-        
-        # Strongest relative performers
-        strong_performers = insights_df.nlargest(3, 'relative_strength')
-        if not strong_performers.empty:
-            print("Strongest relative sentiment performers:")
-            for _, row in strong_performers.iterrows():
-                print(f"  • {row['symbol']}: {row['relative_strength']:.3f} relative strength")
-        
-        # Highest sector correlations
-        if 'sector_correlation' in insights_df.columns:
-            high_correlation = insights_df.nlargest(3, 'sector_correlation')
-            if not high_correlation.empty:
-                print("\nHighest sector sentiment correlation:")
-                for _, row in high_correlation.iterrows():
-                    print(f"  • {row['symbol']}: {row['sector_correlation']:.3f} correlation")
-        
-        # Most divergent symbols
-        if 'sentiment_divergence' in insights_df.columns:
-            divergent = insights_df.nlargest(3, 'sentiment_divergence')
-            if not divergent.empty:
-                print("\nMost sentiment-divergent symbols:")
-                for _, row in divergent.iterrows():
-                    print(f"  • {row['symbol']}: {row['sentiment_divergence']:.3f} divergence")
-        
-    else:
-        print("No cross-symbol insights available for the specified criteria")
-        print("Ensure that cross-symbol analysis has been run on these symbols first.")
     
     return 0
 

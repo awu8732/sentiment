@@ -4,7 +4,7 @@ from typing import List, Dict, Optional
 from datetime import datetime
 import logging
 
-from ..models import NewsArticle, StockData, SentimentFeatures, MarketFeatures, CrossSymbolFeatures
+from src.models import NewsArticle, StockData, SentimentFeatures, MarketFeatures, CrossSymbolFeatures
 logger = logging.getLogger(__name__)
 
 class DatabaseManager:

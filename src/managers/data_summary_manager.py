@@ -6,6 +6,7 @@ from typing import List, Optional
 from datetime import datetime
 import logging
 from tabulate import tabulate
+from scipy import stats
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from data.database import DatabaseManager
@@ -14,7 +15,7 @@ from config.config import Config
 class DataSummaryManager:
     """Handles comprehensive data summary output for news, stock, sentiment, and cross-symbol data"""
     
-    def __init__(self, config: Config, logger: logging, db_manager: DatabaseManager):
+    def __init__(self, config: Config, logger: logging.Logger, db_manager: DatabaseManager):
         self.config = config
         self.logger = logger
         self.db_manager = db_manager
@@ -533,3 +534,285 @@ class DataSummaryManager:
         else:
             for comp in comparisons:
                 print(f"  {comp[0]}: {comp[1]}")
+
+    def print_trends_analysis(self, symbols: List[str], start_date: datetime, end_date: datetime, formatted: bool = False):
+        """Print comprehensive trends analysis for all data types"""
+        print("=" * 80)
+        print("TRENDS ANALYSIS")
+        print("=" * 80)
+        print(f"Date Range: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
+        print(f"Target Symbols: {', '.join(symbols) if symbols else 'All'}")
+        print("-" * 80)
+        
+        # Check minimum date range requirement
+        date_diff = (end_date - start_date).days
+        if date_diff < 7:
+            print(f"❌ Insufficient date range for trend analysis. Minimum 7 days required, got {date_diff} days.")
+            return
+        
+        try:
+            # News trends
+            print("\n📰 NEWS TRENDS")
+            self._analyze_news_trends(symbols, start_date, end_date, formatted)
+            
+            # Stock trends
+            print("\n📈 STOCK TRENDS")
+            self._analyze_stock_trends(symbols, start_date, end_date, formatted)
+            
+            # Sentiment trends
+            print("\n😊 SENTIMENT TRENDS")
+            self._analyze_sentiment_trends(symbols, start_date, end_date, formatted)
+            
+            # Cross-symbol trends
+            print("\n🔄 CROSS-SYMBOL TRENDS")
+            self._analyze_cross_symbol_trends(symbols, start_date, end_date, formatted)
+            
+        except Exception as e:
+            self.logger.error(f"Error in trends analysis: {e}")
+            print(f"❌ Error generating trends analysis: {e}")
+    
+    def _analyze_news_trends(self, symbols: List[str], start_date: datetime, end_date: datetime, formatted: bool):
+        """Analyze trends in news data"""
+        try:
+            # Get data for specified symbols
+            symbol_data = []
+            for symbol in symbols:
+                df = self.db_manager.get_news_data(symbol=symbol, start_date=start_date, end_date=end_date)
+                if not df.empty:
+                    df['symbol'] = symbol
+                    symbol_data.append(df)
+            
+            if not symbol_data:
+                print("❌ No news data available for trend analysis")
+                return
+            
+            combined_df = pd.concat(symbol_data, ignore_index=True)
+            combined_df['timestamp'] = pd.to_datetime(combined_df['timestamp'])
+            
+            # Daily aggregations
+            daily_news = combined_df.groupby(combined_df['timestamp'].dt.date).agg({
+                'id': 'count',  # article count
+                'sentiment_score': 'mean',  # average sentiment
+                'source': 'nunique'  # source diversity
+            }).rename(columns={'id': 'article_count', 'source': 'source_count'})
+            
+            if len(daily_news) < 7:
+                print("❌ Insufficient daily data points for news trend analysis")
+                return
+            
+            trends = []
+            
+            # Article volume trend
+            x = np.arange(len(daily_news))
+            slope, intercept, r_value, p_value, std_err = stats.linregress(x, daily_news['article_count'])
+            trend_indicator = self._get_trend_indicator(slope)
+            pct_change = ((daily_news['article_count'].iloc[-1] - daily_news['article_count'].iloc[0]) / daily_news['article_count'].iloc[0]) * 100
+            trends.append(["Article Volume", f"{trend_indicator} {slope:.2f}/day", f"{pct_change:+.1f}%", f"R²={r_value**2:.3f}"])
+            
+            # Sentiment trend
+            if daily_news['sentiment_score'].notna().sum() >= 7:
+                slope, intercept, r_value, p_value, std_err = stats.linregress(x, daily_news['sentiment_score'].fillna(0))
+                trend_indicator = self._get_trend_indicator(slope)
+                pct_change = ((daily_news['sentiment_score'].iloc[-1] - daily_news['sentiment_score'].iloc[0]) / abs(daily_news['sentiment_score'].iloc[0])) * 100 if daily_news['sentiment_score'].iloc[0] != 0 else 0
+                trends.append(["Sentiment Score", f"{trend_indicator} {slope:.4f}/day", f"{pct_change:+.1f}%", f"R²={r_value**2:.3f}"])
+            
+            # Source diversity trend
+            slope, intercept, r_value, p_value, std_err = stats.linregress(x, daily_news['source_count'])
+            trend_indicator = self._get_trend_indicator(slope)
+            pct_change = ((daily_news['source_count'].iloc[-1] - daily_news['source_count'].iloc[0]) / daily_news['source_count'].iloc[0]) * 100
+            trends.append(["Source Diversity", f"{trend_indicator} {slope:.2f}/day", f"{pct_change:+.1f}%", f"R²={r_value**2:.3f}"])
+            
+            if formatted:
+                print(tabulate(trends, headers=["Metric", "Trend", "Total Change", "Correlation"], tablefmt="grid"))
+            else:
+                for trend in trends:
+                    print(f"  {trend[0]}: {trend[1]} ({trend[2]}) - {trend[3]}")
+                    
+        except Exception as e:
+            self.logger.error(f"Error in news trends analysis: {e}")
+            print(f"❌ Error analyzing news trends: {e}")
+    
+    def _analyze_stock_trends(self, symbols: List[str], start_date: datetime, end_date: datetime, formatted: bool):
+        """Analyze trends in stock data"""
+        try:
+            trends_by_symbol = []
+            
+            for symbol in symbols:
+                df = self.db_manager.get_stock_data(symbol=symbol, start_date=start_date, end_date=end_date)
+                if df.empty:
+                    continue
+                
+                df['timestamp'] = pd.to_datetime(df['timestamp'])
+                df = df.sort_values('timestamp')
+                
+                if len(df) < 7:
+                    continue
+                
+                x = np.arange(len(df))
+                symbol_trends = []
+                
+                # Price trend
+                if 'close' in df.columns:
+                    slope, intercept, r_value, p_value, std_err = stats.linregress(x, df['close'])
+                    trend_indicator = self._get_trend_indicator(slope)
+                    pct_change = ((df['close'].iloc[-1] - df['close'].iloc[0]) / df['close'].iloc[0]) * 100
+                    symbol_trends.append([f"{symbol} Price", f"{trend_indicator} ${slope:.2f}/day", f"{pct_change:+.1f}%", f"R²={r_value**2:.3f}"])
+                
+                # Volume trend
+                if 'volume' in df.columns:
+                    slope, intercept, r_value, p_value, std_err = stats.linregress(x, df['volume'])
+                    trend_indicator = self._get_trend_indicator(slope)
+                    pct_change = ((df['volume'].iloc[-1] - df['volume'].iloc[0]) / df['volume'].iloc[0]) * 100
+                    symbol_trends.append([f"{symbol} Volume", f"{trend_indicator} {slope:,.0f}/day", f"{pct_change:+.1f}%", f"R²={r_value**2:.3f}"])
+                
+                # Volatility trend (using daily returns)
+                if 'close' in df.columns and len(df) > 1:
+                    df['returns'] = df['close'].pct_change()
+                    df['volatility'] = df['returns'].rolling(window=5, min_periods=1).std()
+                    if df['volatility'].notna().sum() >= 7:
+                        vol_data = df['volatility'].dropna()
+                        x_vol = np.arange(len(vol_data))
+                        slope, intercept, r_value, p_value, std_err = stats.linregress(x_vol, vol_data)
+                        trend_indicator = self._get_trend_indicator(slope)
+                        pct_change = ((vol_data.iloc[-1] - vol_data.iloc[0]) / vol_data.iloc[0]) * 100 if vol_data.iloc[0] != 0 else 0
+                        symbol_trends.append([f"{symbol} Volatility", f"{trend_indicator} {slope:.4f}/day", f"{pct_change:+.1f}%", f"R²={r_value**2:.3f}"])
+                
+                trends_by_symbol.extend(symbol_trends)
+            
+            if not trends_by_symbol:
+                print("❌ No stock data available for trend analysis")
+                return
+            
+            if formatted:
+                print(tabulate(trends_by_symbol, headers=["Metric", "Trend", "Total Change", "Correlation"], tablefmt="grid"))
+            else:
+                for trend in trends_by_symbol:
+                    print(f"  {trend[0]}: {trend[1]} ({trend[2]}) - {trend[3]}")
+                    
+        except Exception as e:
+            self.logger.error(f"Error in stock trends analysis: {e}")
+            print(f"❌ Error analyzing stock trends: {e}")
+    
+    def _analyze_sentiment_trends(self, symbols: List[str], start_date: datetime, end_date: datetime, formatted: bool):
+        """Analyze trends in sentiment features data"""
+        try:
+            all_trends = []
+            
+            for symbol in symbols:
+                df = self.db_manager.get_sentiment_features_data(symbol=symbol, start_date=start_date, end_date=end_date)
+                if df.empty:
+                    continue
+                
+                df['timestamp'] = pd.to_datetime(df['timestamp'])
+                df = df.sort_values('timestamp')
+                
+                if len(df) < 7:
+                    continue
+                
+                x = np.arange(len(df))
+                
+                # Key sentiment metrics to analyze
+                sentiment_cols = ['sentiment_score', 'sentiment_momentum', 'news_flow_intensity', 
+                                'extreme_sentiment_ratio', 'sentiment_persistence', 'news_volume']
+                
+                for col in sentiment_cols:
+                    if col in df.columns and df[col].notna().sum() >= 7:
+                        col_data = df[col].dropna()
+                        if len(col_data) >= 7:
+                            x_col = np.arange(len(col_data))
+                            slope, intercept, r_value, p_value, std_err = stats.linregress(x_col, col_data)
+                            trend_indicator = self._get_trend_indicator(slope)
+                            
+                            if col_data.iloc[0] != 0:
+                                pct_change = ((col_data.iloc[-1] - col_data.iloc[0]) / abs(col_data.iloc[0])) * 100
+                            else:
+                                pct_change = 0
+                            
+                            metric_name = f"{symbol} {col.replace('_', ' ').title()}"
+                            if col == 'news_volume':
+                                all_trends.append([metric_name, f"{trend_indicator} {slope:.0f}/day", f"{pct_change:+.1f}%", f"R²={r_value**2:.3f}"])
+                            else:
+                                all_trends.append([metric_name, f"{trend_indicator} {slope:.4f}/day", f"{pct_change:+.1f}%", f"R²={r_value**2:.3f}"])
+            
+            if not all_trends:
+                print("❌ No sentiment data available for trend analysis")
+                return
+            
+            if formatted:
+                print(tabulate(all_trends, headers=["Metric", "Trend", "Total Change", "Correlation"], tablefmt="grid"))
+            else:
+                for trend in all_trends:
+                    print(f"  {trend[0]}: {trend[1]} ({trend[2]}) - {trend[3]}")
+                    
+        except Exception as e:
+            self.logger.error(f"Error in sentiment trends analysis: {e}")
+            print(f"❌ Error analyzing sentiment trends: {e}")
+    
+    def _analyze_cross_symbol_trends(self, symbols: List[str], start_date: datetime, end_date: datetime, formatted: bool):
+        """Analyze trends in cross-symbol features data"""
+        try:
+            all_trends = []
+            
+            for symbol in symbols:
+                df = self.db_manager.get_cross_symbol_features_data(symbol=symbol, start_date=start_date, end_date=end_date)
+                if df.empty:
+                    continue
+                
+                df['timestamp'] = pd.to_datetime(df['timestamp'])
+                df = df.sort_values('timestamp')
+                
+                if len(df) < 7:
+                    continue
+                
+                x = np.arange(len(df))
+                
+                # Key cross-symbol metrics to analyze
+                cross_cols = ['relative_sentiment_ratio', 'sector_sentiment_correlation', 
+                            'sector_sentiment_divergence', 'market_sentiment_correlation',
+                            'market_sentiment_divergence', 'sector_news_volume']
+                
+                for col in cross_cols:
+                    if col in df.columns and df[col].notna().sum() >= 7:
+                        col_data = df[col].dropna()
+                        if len(col_data) >= 7:
+                            x_col = np.arange(len(col_data))
+                            slope, intercept, r_value, p_value, std_err = stats.linregress(x_col, col_data)
+                            trend_indicator = self._get_trend_indicator(slope)
+                            
+                            if col_data.iloc[0] != 0:
+                                pct_change = ((col_data.iloc[-1] - col_data.iloc[0]) / abs(col_data.iloc[0])) * 100
+                            else:
+                                pct_change = 0
+                            
+                            metric_name = f"{symbol} {col.replace('_', ' ').title()}"
+                            if 'volume' in col:
+                                all_trends.append([metric_name, f"{trend_indicator} {slope:.0f}/day", f"{pct_change:+.1f}%", f"R²={r_value**2:.3f}"])
+                            else:
+                                all_trends.append([metric_name, f"{trend_indicator} {slope:.4f}/day", f"{pct_change:+.1f}%", f"R²={r_value**2:.3f}"])
+            
+            if not all_trends:
+                print("❌ No cross-symbol data available for trend analysis")
+                return
+            
+            if formatted:
+                print(tabulate(all_trends, headers=["Metric", "Trend", "Total Change", "Correlation"], tablefmt="grid"))
+            else:
+                for trend in all_trends:
+                    print(f"  {trend[0]}: {trend[1]} ({trend[2]}) - {trend[3]}")
+                    
+        except Exception as e:
+            self.logger.error(f"Error in cross-symbol trends analysis: {e}")
+            print(f"❌ Error analyzing cross-symbol trends: {e}")
+    
+    def _get_trend_indicator(self, slope: float) -> str:
+        """Convert slope to trend indicator"""
+        if slope > 0.01:
+            return "↗"  # Strong upward
+        elif slope > 0.001:
+            return "↑"  # Upward
+        elif slope > -0.001:
+            return "→"  # Flat
+        elif slope > -0.01:
+            return "↓"  # Downward
+        else:
+            return "↘"  # Strong downwardimport pandas as pd

@@ -59,11 +59,14 @@ class SentimentUtils:
     def calculate_sentiment_persistence(sentiments: pd.Series, lag: int = 5) -> float:
         """Estimate sentiment autocorrelation to capture persistence"""
         sentiments = sentiments.dropna()
-        if len(sentiments) <= lag or sentiments.var() == 0:
+        if len(sentiments) < lag + 3 or sentiments.var() == 0:
             return np.nan
 
         try:
             return sentiments.autocorr(lag=lag)
         except Exception as e:
-            logger.warning(f"Autocorrelation calculation failed: {e}")
+            logger.warning(
+                "Autocorrelation calculation failed: %s | lag=%d | n=%d | var=%f | head=%s",
+                e, lag, len(sentiments), sentiments.var(), sentiments.head(10).to_list()
+            )
             return np.nan

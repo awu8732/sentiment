@@ -41,7 +41,8 @@ class MarketSentimentManager:
                                window_size: int = 24):
         """Outward facing method to create market-features"""
         market_df = self._get_market_data(start_date, end_date)
-        self._create_market_features(market_df, window_size)
+        results = self._create_market_features(market_df, window_size)
+        return results
 
     def _create_market_features(self, 
                             all_news_df: pd.DataFrame,
@@ -123,6 +124,7 @@ class MarketSentimentManager:
             self.logger.error(f"Error inserting market features: {e}")
 
         return {
+            'articles_processed': len(all_news_df),
             'features_created': features_created,
             'features_updated': 0,
             'feature_processing_time': processing_time

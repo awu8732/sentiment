@@ -146,6 +146,11 @@ class CrossSymbolSentimentManager:
             if df is not None and not df.empty:
                 sector_dfs.append(df[df['sentiment_score'].notna()].copy())
 
+        sector_dfs = [
+            df for df in sector_dfs 
+            if not df.empty and df.dropna(axis=1, how="all").shape[1] > 0
+        ]
+
         if not sector_dfs:
             return pd.DataFrame()
 

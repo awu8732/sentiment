@@ -48,10 +48,8 @@ def main():
                                help='Analyze articles for specific sector')
     selection_group.add_argument('--article-ids', nargs='+', type=int,
                                help='Analyze specific article IDs')
-    selection_group.add_argument('--summary', action='store_true',
-                               help='Show sentiment analysis summary only')
-    selection_group.add_argument('--cross-insights', action='store_true',
-                               help='Show cross-symbol sentiment insights')
+    selection_group.add_argument('--market-features', action='store_true',
+                               help='Generate market-wide features (ignores symbols/sectors)')
     
     # Additional filters
     parser.add_argument('--since', type=str,
@@ -60,12 +58,6 @@ def main():
                        help='Number of articles to process at once (default: 100)')
     parser.add_argument('--force', action='store_true',
                        help='Re-analyze articles that already have sentiment scores')
-
-    # Analysis options
-    parser.add_argument('--trends', action='store_true',
-                       help='Show sentiment trends over time')
-    parser.add_argument('--days-back', type=int, default=30,
-                       help='Days back for trend analysis (default: 30)')
     
     # Cross-symbol analysis options
     parser.add_argument('--cross-symbol', action='store_true',
@@ -89,15 +81,28 @@ def main():
         
         # Determine symbols to analyze
         symbols = None
-        if args.symbols:
+        if args.market_features:    
+            # Create market features and return
+            results = manager.market_manager.create_market_features(
+                start_date=since_date,
+                window_size=args.cross_window_hours
+            )
+
+            if results:
+                print(f"Articles processed: {results['articles_processed']}")
+                print(f"Features created: {results['features_created']}")
+                print(f"Features updated: {results['features_updated']}")
+                print(f"Processing time: {results['feature_processing_time']}")
+            else:
+                print("No results returned from market feature creation.")
+        
+        elif args.all:
+            symbols = None  # Analyze all symbols
+        elif args.symbols:
             symbols = args.symbols
         elif args.sector:
             symbols = get_symbols_by_sector(args.sector)
             logger.info(f"Analyzing sector '{args.sector}': {symbols}")
-        elif args.all:
-            symbols = None  # Analyze all symbols
-        elif args.cross_insights:
-            symbols = args.symbols if args.symbols else get_all_symbols()[:10]  # Default to top 10
         
         # Run sentiment analysis
         logger.info("Starting sentiment analysis...")
@@ -105,10 +110,11 @@ def main():
         if args.article_ids:
             results = manager.analyze_articles(
                 article_ids=args.article_ids,
+                start_date=since_date,
                 batch_size=args.batch_size,
                 force_reanalyze=args.force,
                 enable_cross_symbol=args.cross_symbol,
-                cross_symbol_window=args.cross_window_hours
+                window_size=args.cross_window_hours
             )
         else:
             results = manager.analyze_articles(
@@ -125,32 +131,6 @@ def main():
     except Exception as e:
         logger.error(f"Sentiment analysis failed: {e}")
         return 1
-    
-def show_summary(runner, symbols, include_cross_symbol):
-    """Show sentiment analysis summary"""
-    print("\n=== SENTIMENT ANALYSIS SUMMARY ===")
-    summary_df = runner.get_sentiment_summary(symbols, include_cross_symbol=include_cross_symbol)
-    
-    if not summary_df.empty:
-        print(summary_df.to_string(index=False))
-        
-        # Overall statistics
-        total_articles = summary_df['total_articles'].sum()
-        analyzed_articles = summary_df['analyzed_articles'].sum()
-        avg_progress = summary_df['analysis_progress'].mean()
-        
-        print(f"\nOverall Statistics:")
-        print(f"Total articles: {total_articles}")
-        print(f"Analyzed articles: {analyzed_articles}")
-        print(f"Average analysis progress: {avg_progress:.1f}%")
-        
-        if include_cross_symbol and 'cross_symbol_records' in summary_df.columns:
-            cross_symbol_records = summary_df['cross_symbol_records'].sum()
-            print(f"Cross-symbol feature records: {cross_symbol_records}")
-    else:
-        print("No articles found matching criteria")
-    
-    return 0
 
 def print_analysis_results(results):
     """Print sentiment analysis results"""
@@ -166,32 +146,6 @@ def print_analysis_results(results):
     
     if results['symbols_processed']:
         print(f"Symbols: {', '.join(results['symbols_processed'])}")
-
-def show_sentiment_trends(runner, symbols, days_back, include_cross_symbol):
-    """Show sentiment trends over time"""
-    print("\n=== SENTIMENT TRENDS ===")
-    
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=days_back)
-    
-    trends_df = runner.analyze_by_time_period(
-        symbols, start_date, end_date, include_cross_symbol=include_cross_symbol
-    )
-    
-    if not trends_df.empty:
-        # Show recent trends (last 7 days per symbol)
-        recent_trends = trends_df.groupby('symbol').tail(7)
-        
-        display_columns = ['symbol', 'date', 'article_count', 'avg_sentiment', 
-                          'positive_count', 'negative_count']
-        
-        if include_cross_symbol:
-            cross_columns = ['avg_sector_sentiment', 'avg_relative_strength']
-            display_columns.extend([col for col in cross_columns if col in recent_trends.columns])
-        
-        print(recent_trends[display_columns].to_string(index=False))
-    else:
-        print("No trend data available for the specified period")
 
 if __name__ == "__main__":
     exit(main())

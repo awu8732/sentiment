@@ -87,7 +87,6 @@ def main():
                 start_date=since_date,
                 window_size=args.cross_window_hours
             )
-
             if results:
                 print(f"Articles processed: {results['articles_processed']}")
                 print(f"Features created: {results['features_created']}")
@@ -95,6 +94,7 @@ def main():
                 print(f"Processing time: {results['feature_processing_time']}")
             else:
                 print("No results returned from market feature creation.")
+            return 0
         
         elif args.all:
             symbols = None  # Analyze all symbols

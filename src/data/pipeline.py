@@ -5,7 +5,7 @@ from datetime import datetime
 
 from .database import DatabaseManager
 from .collectors.news_collector import NewsAPICollector, AlphaVantageNewsCollector, RedditCollector
-from .collectors.stock_collector import YahooFinanceCollector
+from .collectors.stock_collector import YahooFinanceCollector, AlphaVantageStockCollector
 from config.config import Config
 
 logger = logging.getLogger(__name__)
@@ -39,16 +39,16 @@ class DataPipeline:
                 )
             )
         
-        self.stock_collector = YahooFinanceCollector(config.RATE_LIMITS['yfinance'])
+        self.stock_collector = AlphaVantageStockCollector(config.API_KEYS['alpha_vantage'])
     
     def collect_all_data(self, symbols: List[str], days_back: int = None):
         """Collect both news and stock data for given symbols"""
         days_back = days_back or self.config.DEFAULT_LOOKBACK_DAYS
-        logger.info(f"Starting data collection for {len(symbols)} symbols, {days_back} days back")
+        logger.info(f"Starting data collection for {len(symbols)} symbols")
         
         # Collect stock data first
-        logger.info("Collecting stock price data...")
-        stock_data = self.stock_collector.collect_data(symbols, self.config.STOCK_PERIOD)
+        logger.info(f"Collecting stock price data from a period of {self.config.STOCK_PERIOD}...")
+        stock_data = self.stock_collector.collect_data(symbols, self.config.STOCK_INTERVAL , self.config.STOCK_PERIOD)
         
         # Insert stock data
         total_stock_records = 0
@@ -60,7 +60,7 @@ class DataPipeline:
         logger.info(f"Inserted {total_stock_records} total stock price records")
         
         # Collect news data
-        logger.info("Collecting news data...")
+        logger.info(f"Collecting news data from {days_back} days back...")
         total_articles = 0
         
         for symbol in symbols:

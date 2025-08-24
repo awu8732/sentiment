@@ -21,8 +21,8 @@ class Config:
     
     # Data collection settings
     DEFAULT_LOOKBACK_DAYS = 30
+    STOCK_INTERVAL = "30min"
     STOCK_PERIOD = "6mo"
-    MAX_NEWS_ARTICLES_PER_SYMBOL = 100
     
     # Rate limiting (seconds)
     RATE_LIMITS = {

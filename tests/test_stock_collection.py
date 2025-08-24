@@ -4,7 +4,7 @@ from datetime import datetime
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from config.config import Config
 from src.data.pipeline import DataPipeline
-from src.data.collectors.stock_collector import AlphaVantageStockCollector
+from src.data.collectors import AlphaVantageStockCollector
 from src.utils.logger import setup_logging
 
 config = Config()

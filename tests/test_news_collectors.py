@@ -4,7 +4,7 @@ import pytest
 from unittest.mock import Mock, patch
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from config.config import Config
-from src.data.collectors.news_collector import NewsAPICollector, AlphaVantageNewsCollector, RedditCollector
+from src.data.collectors import NewsAPICollector, AlphaVantageNewsCollector, RedditCollector
 
 config = Config()
 

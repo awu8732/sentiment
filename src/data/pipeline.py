@@ -4,8 +4,7 @@ import logging
 from datetime import datetime
 
 from .database import DatabaseManager
-from .collectors.news_collector import NewsAPICollector, AlphaVantageNewsCollector, RedditCollector
-from .collectors.stock_collector import YahooFinanceCollector, AlphaVantageStockCollector
+from .collectors import YahooFinanceCollector, AlphaVantageStockCollector, NewsAPICollector, AlphaVantageNewsCollector, RedditCollector
 from config.config import Config
 
 logger = logging.getLogger(__name__)
@@ -39,7 +38,7 @@ class DataPipeline:
                 )
             )
         
-        self.stock_collector = AlphaVantageStockCollector(config.API_KEYS['alpha_vantage'])
+        self.stock_collector = YahooFinanceCollector(config.RATE_LIMITS['yfinance'])
     
     def collect_all_data(self, symbols: List[str], days_back: int = None):
         """Collect both news and stock data for given symbols"""
@@ -48,7 +47,7 @@ class DataPipeline:
         
         # Collect stock data first
         logger.info(f"Collecting stock price data from a period of {self.config.STOCK_PERIOD}...")
-        stock_data = self.stock_collector.collect_data(symbols, self.config.STOCK_INTERVAL , self.config.STOCK_PERIOD)
+        stock_data = self.stock_collector.collect_data(symbols, self.config.STOCK_INTERVAL, self.config.STOCK_PERIOD)
         
         # Insert stock data
         total_stock_records = 0

@@ -21,8 +21,8 @@ class Config:
     
     # Data collection settings
     DEFAULT_LOOKBACK_DAYS = 30
-    STOCK_INTERVAL = "30min"
-    STOCK_PERIOD = "6mo"
+    STOCK_INTERVAL = "1h"
+    STOCK_PERIOD = "2y"
     
     # Rate limiting (seconds)
     RATE_LIMITS = {

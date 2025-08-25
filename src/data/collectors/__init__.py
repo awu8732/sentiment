@@ -1,6 +1,6 @@
-from stocks.alpha_vantage_collector import AlphaVantageStockCollector
-from stocks.yahoo_finance_collector import YahooFinanceCollector
+from .stocks.alpha_vantage_collector import AlphaVantageStockCollector
+from .stocks.yahoo_finance_collector import YahooFinanceCollector
 
-from news.alpha_vantage_news_collector import AlphaVantageNewsCollector
-from news.news_api_collector import NewsAPICollector
-from news.reddit_collector import RedditCollector
+from .news.alpha_vantage_news_collector import AlphaVantageNewsCollector
+from .news.news_api_collector import NewsAPICollector
+from .news.reddit_collector import RedditCollector
